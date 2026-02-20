@@ -62,55 +62,67 @@ Telegram --> launcher.py
 
 ---
 
-## Quick Start (Docker)
+## Launch Manual
 
-### Step 1: Create a Telegram Bot
+Assumes you have a VPS (Ubuntu/Debian) with SSH access.
 
-1. Open Telegram and search for [@BotFather](https://t.me/BotFather).
-2. Send `/newbot` and follow the prompts to choose a name and username.
-3. Copy the **bot token**.
-4. You will use this token as `TELEGRAM_BOT_TOKEN` in the next step.
-
-### Step 2: Get API Keys
+### Step 1: Get API Keys
 
 | Key | Required | Where to get it |
 |-----|----------|-----------------|
 | `OPENROUTER_API_KEY` | Yes | [openrouter.ai/keys](https://openrouter.ai/keys) -- Create an account, add credits, generate a key |
-| `TELEGRAM_BOT_TOKEN` | Yes | [@BotFather](https://t.me/BotFather) on Telegram (see Step 1) |
+| `TELEGRAM_BOT_TOKEN` | Yes | Create a bot via [@BotFather](https://t.me/BotFather) on Telegram (`/newbot`), copy the token |
 | `TOTAL_BUDGET` | Yes | Your spending limit in USD (e.g. `50`) |
-| `GITHUB_TOKEN` | Yes | [github.com/settings/tokens](https://github.com/settings/tokens) -- Generate a classic token with `repo` scope |
+| `GITHUB_TOKEN` | Yes | [github.com/settings/personal-access-tokens/new](https://github.com/settings/personal-access-tokens/new) -- Fine-grained token with **Contents: Read and write** on your fork |
 | `OPENAI_API_KEY` | No | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) -- Enables web search tool |
 | `ANTHROPIC_API_KEY` | No | [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys) -- Enables Claude Code CLI |
 
-### Step 3: Fork, Configure, and Run
+### Step 2: Fork the Repository
 
-1. **Fork** this repository on GitHub: click the **Fork** button at the top of the page.
+**You must fork, not just clone.** Ouroboros modifies its own code and pushes commits to its repo. Your fork becomes its body.
 
-2. **Clone** your fork to a VPS:
+Click **Fork** at the top of this page, then SSH into your VPS and run:
 
 ```bash
+# Install Docker (if not installed)
+curl -fsSL https://get.docker.com | sh
+
+# Clone your fork
 git clone https://github.com/YOUR_USERNAME/ouroboros.git
 cd ouroboros
-```
 
-3. **Create `.env`** from the example and fill in your values:
-
-```bash
+# Configure
 cp .env.example .env
-# Edit .env with your API keys, GitHub username, etc.
+nano .env   # Fill in all required values (GITHUB_USER = your GitHub username)
 ```
 
-4. **Start** with Docker Compose:
+### Step 3: Launch
 
 ```bash
-docker compose up -d
+docker compose up -d --build
 ```
 
-### Step 4: Start Chatting
+First build takes ~5 minutes (installs Playwright, pip dependencies, GitHub CLI).
 
-Open your Telegram bot and send any message. The first person to write becomes the **creator** (owner). All subsequent messages from other users are kindly ignored.
+Check logs: `docker compose logs -f`
 
-**Restarting:** The container auto-restarts on failure (`on-failure` policy). Use `/restart` in Telegram for soft restart, `/panic` to stop. Your Ouroboros's evolution is preserved -- all changes are pushed to your fork, and agent state lives in a Docker volume.
+### Step 4: Connect
+
+Open your Telegram bot and send any message. The first person to write becomes the **owner**. All messages from other users are ignored.
+
+You should see: `Owner registered. Ouroboros online.`
+
+### Operations
+
+| Action | Command |
+|--------|---------|
+| Check status | `docker compose ps` |
+| View logs | `docker compose logs -f` |
+| Stop | `docker compose down` |
+| Start | `docker compose up -d` |
+| Rebuild after code changes | `docker compose up -d --build` |
+
+The container auto-restarts on failure. Use `/restart` in Telegram for soft restart, `/panic` to hard stop. All state persists in a Docker volume -- survives restarts and rebuilds.
 
 ---
 
