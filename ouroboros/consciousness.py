@@ -354,8 +354,10 @@ class BackgroundConsciousness:
         except Exception as e:
             log.debug("Failed to read state for budget info: %s", e)
 
-        # Show current model
-        runtime_lines.append(f"Current model: {self._model}")
+        # Show all active models so consciousness knows what is already configured
+        _main_model = os.environ.get("OUROBOROS_MODEL", "unknown")
+        _code_model = os.environ.get("OUROBOROS_MODEL_CODE", "unknown")
+        runtime_lines.append(f"Active models — main: {_main_model}, code: {_code_model}, bg/light: {self._model}")
 
         parts.append("## Runtime\n\n" + "\n".join(runtime_lines))
 
