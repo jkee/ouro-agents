@@ -203,6 +203,12 @@ Full text: [BIBLE.md](BIBLE.md)
 
 ## Changelog
 
+### v6.2.2 -- Evolution Budget Reserve Fix
+- **Fix: EVOLUTION_BUDGET_RESERVE hardcoded at $50** -- made evolution impossible at $50 budget and severely limited at $80. Now dynamically computed as `max($10, TOTAL_BUDGET × 30%)` inside `set_budget_limit()`.
+- At $50 budget: reserve drops from $50 → $15 (70% available for evolution). At $80: from $50 → $24.
+- Configurable via `EVOLUTION_BUDGET_RESERVE_PCT` env var (default: 30, clamped to [5%, 80%]).
+- No changes needed in queue.py or workers.py — they import the global.
+
 ### v6.2.1 -- Knowledge Discovery + Pricing Table Expansion
 - **Fix: `knowledge_list` in CORE tools** -- was missing from `CORE_TOOL_NAMES`, making it invisible to agents without `list_available_tools`. Every task can now discover the knowledge base without extra steps.
 - **Pricing table: 57 models** -- expanded from 15 static entries to 57, covering GPT-5.x (incl. Codex/Nano/Mini), Claude 4.x Sonnet/Opus/Haiku, Gemini 3.x Pro/Flash/Nano, Grok-4, Llama-4-Scout/Maverick/Behemoth, Qwen3-235B, DeepSeek-R2, Mistral-Large-3, and more. Correct Gemini 3.1 slug (`google/gemini-3.1-pro-preview`).

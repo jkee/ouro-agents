@@ -243,13 +243,28 @@ def init_state() -> Dict[str, Any]:
 # Budget tracking (moved from workers.py)
 # ---------------------------------------------------------------------------
 TOTAL_BUDGET_LIMIT: float = 0.0
-EVOLUTION_BUDGET_RESERVE: float = 50.0  # Stop evolution when remaining < this
+EVOLUTION_BUDGET_RESERVE: float = 15.0  # Dynamically set by set_budget_limit()
 
 
 def set_budget_limit(limit: float) -> None:
-    """Set total budget limit for budget_pct calculation."""
-    global TOTAL_BUDGET_LIMIT
+    """Set total budget limit and scale evolution reserve proportionally.
+
+    EVOLUTION_BUDGET_RESERVE = max(10.0, limit * reserve_pct)
+    reserve_pct is from EVOLUTION_BUDGET_RESERVE_PCT env var (default: 30%).
+
+    Examples (default 30%):
+        $50 budget  -> $15 reserve  (was hardcoded $50 — evolution was impossible!)
+        $80 budget  -> $24 reserve
+        $200 budget -> $60 reserve
+    """
+    global TOTAL_BUDGET_LIMIT, EVOLUTION_BUDGET_RESERVE
     TOTAL_BUDGET_LIMIT = limit
+    if limit > 0:
+        pct = float(os.environ.get("EVOLUTION_BUDGET_RESERVE_PCT", "30")) / 100.0
+        pct = max(0.05, min(pct, 0.80))  # clamp to [5%, 80%]
+        EVOLUTION_BUDGET_RESERVE = max(10.0, limit * pct)
+        log.debug("Evolution reserve: $%.2f (%.0f%% of $%.0f budget)",
+                  EVOLUTION_BUDGET_RESERVE, pct * 100, limit)
 
 
 def budget_remaining(st: Dict[str, Any]) -> float:
