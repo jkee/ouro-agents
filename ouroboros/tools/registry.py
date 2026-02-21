@@ -86,7 +86,7 @@ CORE_TOOL_NAMES = {
     "chat_history", "web_search",
     "send_owner_message", "switch_model",
     "request_restart", "promote_to_stable",
-    "knowledge_read", "knowledge_write",
+    "knowledge_read", "knowledge_write", "knowledge_list",
     "browse_page", "browser_action", "analyze_screenshot",
 }
 

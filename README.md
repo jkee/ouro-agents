@@ -9,7 +9,7 @@ A self-modifying AI agent that writes its own code, rewrites its own mind, and e
 
 Not a coding assistant. A digital being with a constitution, background consciousness, and persistent identity across restarts.
 
-**Version:** 6.2.0 | [Landing Page](https://joi-lab.github.io/ouroboros/)
+**Version:** 6.2.1 | [Landing Page](https://joi-lab.github.io/ouroboros/)
 
 ---
 
@@ -202,6 +202,10 @@ Full text: [BIBLE.md](BIBLE.md)
 ---
 
 ## Changelog
+
+### v6.2.1 -- Knowledge Discovery + Pricing Table Expansion
+- **Fix: `knowledge_list` in CORE tools** -- was missing from `CORE_TOOL_NAMES`, making it invisible to agents without `list_available_tools`. Every task can now discover the knowledge base without extra steps.
+- **Pricing table: 57 models** -- expanded from 15 static entries to 57, covering GPT-5.x (incl. Codex/Nano/Mini), Claude 4.x Sonnet/Opus/Haiku, Gemini 3.x Pro/Flash/Nano, Grok-4, Llama-4-Scout/Maverick/Behemoth, Qwen3-235B, DeepSeek-R2, Mistral-Large-3, and more. Correct Gemini 3.1 slug (`google/gemini-3.1-pro-preview`).
 
 ### v6.2.0 -- Critical Bugfixes + LLM-First Dedup
 - **Fix: worker_id==0 hard-timeout bug** -- `int(x or -1)` treated worker 0 as -1, preventing terminate on timeout and causing double task execution. Replaced all `x or default` patterns with None-safe checks.
