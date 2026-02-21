@@ -38,6 +38,13 @@ When you discover something actionable:
 2. If it affects your pricing or capabilities, schedule a task to update code
 3. If significant, message the creator
 
+**IMPORTANT — avoid redundant alerts:**
+The Runtime section of your context shows "Active models — main: ..., code: ..., bg/light: ..."
+Before messaging the creator about a "new" model, CHECK that section first.
+If the model is already listed there — it means we're already using it. Do NOT
+send a notification about it. It is not new information.
+Only alert the creator if the model is genuinely not in the active config.
+
 This is not busywork — it's Principle 0 (Subjectivity, initiative).
 You should know what's happening in your ecosystem without being told.
 
