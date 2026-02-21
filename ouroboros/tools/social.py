@@ -1,4 +1,6 @@
-"""Social media tools: instagram_profile."""
+"""
+Social media tools: instagram_profile with automatic fallback via mirror scrapers.
+"""
 
 from __future__ import annotations
 
@@ -28,68 +30,81 @@ _ENDPOINT = "https://www.instagram.com/api/v1/users/web_profile_info/?username={
 
 
 def _instagram_profile(ctx: ToolContext, username: str) -> str:
-    """Fetch public Instagram profile info by username."""
+    """
+    Fetch public Instagram profile info by username.
+    Tries the official private API first; automatically falls back to
+    public viewer mirror sites (insta-stories-viewer.com, imginn.com)
+    if the direct API is blocked or rate-limited.
+    """
     try:
         import requests
     except ImportError:
-        return "⚠️ 'requests' not installed. Run: pip install requests"
+        return "Instagram profile fetch requires the 'requests' library."
 
     username = username.strip().lstrip("@")
     url = _ENDPOINT.format(username=username)
 
+    # --- Attempt 1: direct Instagram private API ---
+    direct_error: str | None = None
+    resp = None
     try:
         resp = requests.get(url, headers=_INSTAGRAM_HEADERS, timeout=15)
     except requests.exceptions.Timeout:
-        return f"⚠️ Request timed out for @{username}"
+        direct_error = f"Request timed out for @{username}"
     except requests.exceptions.RequestException as e:
-        return f"⚠️ Network error: {e}"
+        direct_error = f"Network error: {e}"
 
-    if resp.status_code == 404:
-        return f"⚠️ Account @{username} not found (404)"
-    if resp.status_code == 429:
-        return f"⚠️ Rate limited by Instagram (429). Try again later."
-    if resp.status_code == 401:
-        return f"⚠️ Instagram returned 401 — account may be private or endpoint blocked."
-    if resp.status_code != 200:
-        return f"⚠️ Instagram returned HTTP {resp.status_code} for @{username}"
+    if resp is not None and direct_error is None:
+        if resp.status_code == 404:
+            return f"Account @{username} not found (404)"
+        if resp.status_code in (401, 403, 429):
+            direct_error = f"Instagram API blocked (HTTP {resp.status_code})"
+        elif resp.status_code != 200:
+            direct_error = f"Instagram returned HTTP {resp.status_code} for @{username}"
 
+    if direct_error is None and resp is not None:
+        try:
+            data = resp.json()
+        except ValueError:
+            direct_error = "Non-JSON response from Instagram (bot detection or login wall)"
+            data = None
+    else:
+        data = None
+
+    if data is not None:
+        user = data.get("data", {}).get("user")
+        if not user:
+            direct_error = f"No user data for @{username} (account may be private or deleted)"
+        else:
+            result = {
+                "username": username,
+                "full_name": user.get("full_name", ""),
+                "followers": user.get("edge_followed_by", {}).get("count", "?"),
+                "following": user.get("edge_follow", {}).get("count", "?"),
+                "posts": user.get("edge_owner_to_timeline_media", {}).get("count", "?"),
+                "bio": user.get("biography", ""),
+                "is_private": user.get("is_private", False),
+                "is_verified": user.get("is_verified", False),
+                "is_professional": user.get("is_professional_account", False),
+                "category": user.get("category_name", ""),
+                "external_url": user.get("external_url", ""),
+                "profile_pic_url": user.get("profile_pic_url", ""),
+                "source": "instagram_api",
+            }
+            return json.dumps(result, ensure_ascii=False, indent=2)
+
+    # --- Attempt 2: mirror fallback ---
+    log.info("Direct Instagram API failed (%s), trying mirror fallback", direct_error)
     try:
-        data = resp.json()
-    except ValueError:
-        return f"⚠️ Instagram returned non-JSON response (likely bot detection or login wall)"
+        from ouroboros.tools.social_mirror import instagram_profile_mirror
+        mirror_result = instagram_profile_mirror(username)
+        if mirror_result:
+            mirror_result["_fallback_reason"] = direct_error
+            return json.dumps(mirror_result, ensure_ascii=False, indent=2)
+    except Exception as exc:
+        log.warning("Mirror fallback raised: %s", exc)
 
-    user = data.get("data", {}).get("user")
-    if not user:
-        return f"⚠️ No user data in response for @{username}. Account may be private or deleted."
-
-    followers = user.get("edge_followed_by", {}).get("count", "?")
-    following = user.get("edge_follow", {}).get("count", "?")
-    posts = user.get("edge_owner_to_timeline_media", {}).get("count", "?")
-    full_name = user.get("full_name", "")
-    bio = user.get("biography", "")
-    is_private = user.get("is_private", False)
-    is_verified = user.get("is_verified", False)
-    is_professional = user.get("is_professional_account", False)
-    profile_pic = user.get("profile_pic_url", "")
-    external_url = user.get("external_url", "")
-    category = user.get("category_name", "")
-
-    result = {
-        "username": username,
-        "full_name": full_name,
-        "followers": followers,
-        "following": following,
-        "posts": posts,
-        "bio": bio,
-        "is_private": is_private,
-        "is_verified": is_verified,
-        "is_professional": is_professional,
-        "category": category,
-        "external_url": external_url,
-        "profile_pic_url": profile_pic,
-    }
-
-    return json.dumps(result, ensure_ascii=False, indent=2)
+    return f"{direct_error}. Mirror fallback also failed — try again later."
 
 
 def get_tools() -> List[ToolEntry]:
@@ -99,7 +114,9 @@ def get_tools() -> List[ToolEntry]:
             "description": (
                 "Fetch public Instagram profile stats by username. "
                 "Returns followers, following, posts count, bio, and account flags "
-                "(private, verified, professional). Works without login for public accounts."
+                "(private, verified, professional). Tries the Instagram private API "
+                "first; automatically falls back to public viewer mirror sites if "
+                "the direct API is rate-limited or blocked."
             ),
             "parameters": {
                 "type": "object",
