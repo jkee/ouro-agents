@@ -65,8 +65,9 @@ def _build_runtime_section(env: Any, task: Dict[str, Any]) -> str:
         log.debug("Failed to get git info for context", exc_info=True)
         git_branch, git_sha = "unknown", "unknown"
 
-    # --- Budget calculation ---
+    # --- State + Budget calculation ---
     budget_info = None
+    state_data = {}
     try:
         state_json = _safe_read(env.drive_path("state/state.json"), fallback="{}")
         state_data = json.loads(state_json)
@@ -78,6 +79,8 @@ def _build_runtime_section(env: Any, task: Dict[str, Any]) -> str:
         log.debug("Failed to calculate budget info for context", exc_info=True)
         pass
 
+    no_approve_mode = bool(state_data.get("no_approve_mode"))
+
     # --- Runtime context JSON ---
     runtime_data = {
         "utc_now": utc_now_iso(),
@@ -86,6 +89,7 @@ def _build_runtime_section(env: Any, task: Dict[str, Any]) -> str:
         "git_head": git_sha,
         "git_branch": git_branch,
         "task": {"id": task.get("id"), "type": task.get("type")},
+        "no_approve_mode": no_approve_mode,
     }
     if budget_info:
         runtime_data["budget"] = budget_info
@@ -94,7 +98,7 @@ def _build_runtime_section(env: Any, task: Dict[str, Any]) -> str:
 
 
 def _build_memory_sections(memory: Memory) -> List[str]:
-    """Build scratchpad, identity, dialogue summary sections."""
+    """Build scratchpad, identity, user context, dialogue summary sections."""
     sections = []
 
     scratchpad_raw = memory.load_scratchpad()
@@ -102,6 +106,9 @@ def _build_memory_sections(memory: Memory) -> List[str]:
 
     identity_raw = memory.load_identity()
     sections.append("## Identity\n\n" + clip_text(identity_raw, 80000))
+
+    user_context_raw = memory.load_user_context()
+    sections.append("## User Context\n\n" + clip_text(user_context_raw, 5000))
 
     # Dialogue summary (key moments from chat history)
     summary_path = memory.drive_root / "memory" / "dialogue_summary.md"
@@ -155,7 +162,7 @@ def _build_health_invariants(env: Any) -> str:
     """Build health invariants section for LLM-first self-detection.
 
     Surfaces anomalies as informational text. The LLM (not code) decides
-    what action to take based on what it reads here. (Bible P0+P3)
+    what action to take based on what it reads here.
     """
     checks = []
 
@@ -346,7 +353,7 @@ def build_llm_messages(
         _build_runtime_section(env, task),
     ]
 
-    # Health invariants — surfaces anomalies for LLM-first self-detection (Bible P0+P3)
+    # Health invariants — surfaces anomalies for LLM-first self-detection
     health_section = _build_health_invariants(env)
     if health_section:
         dynamic_parts.append(health_section)
@@ -731,6 +738,7 @@ def _compact_tool_call_arguments(tool_name: str, args_json: str) -> Dict[str, An
         "drive_write": "content",
         "claude_code_edit": "prompt",
         "update_scratchpad": "content",
+        "update_user_context": "content",
     }
 
     try:

@@ -185,6 +185,39 @@ ok, msg = safe_restart(reason="bootstrap", unsynced_policy="rescue_and_reset")
 assert ok, f"Bootstrap failed: {msg}"
 
 # ----------------------------
+# 5.1) First-run initialization (Bible section 18)
+# ----------------------------
+_init_st = load_state()
+if not _init_st.get("initialized"):
+    log.info("First-run initialization (Bible section 18)")
+    # Create ARCHITECTURE.md if missing
+    _arch_path = REPO_DIR / "ARCHITECTURE.md"
+    if not _arch_path.exists():
+        _arch_path.write_text(
+            "# Architecture\n\n"
+            "This file describes the technical architecture of Ouroboros.\n"
+            "Maintained by the agent. See BIBLE.md section 8.\n",
+            encoding="utf-8",
+        )
+    # Create IMPROVE.md if missing
+    _improve_path = REPO_DIR / "IMPROVE.md"
+    if not _improve_path.exists():
+        _improve_path.write_text(
+            "# How to Improve Effectively\n\n"
+            "This file captures lessons on self-improvement.\n"
+            "Maintained by the agent. See BIBLE.md section 8.\n",
+            encoding="utf-8",
+        )
+    # Create improvements-log/ directory
+    _implog_dir = REPO_DIR / "improvements-log"
+    _implog_dir.mkdir(parents=True, exist_ok=True)
+    (_implog_dir / ".gitkeep").touch(exist_ok=True)
+    # Mark as initialized
+    _init_st["initialized"] = True
+    save_state(_init_st)
+    log.info("First-run initialization complete")
+
+# ----------------------------
 # 6) Start workers
 # ----------------------------
 kill_workers()
@@ -394,6 +427,59 @@ def _handle_supervisor_command(text: str, chat_id: int, tg_offset: int = 0):
             send_with_budget(chat_id, f"\U0001f9e0 Background consciousness: {bg_status}")
         return f"[Supervisor handled /bg {action}]\n"
 
+    if lowered.startswith("/break"):
+        # Cancel current task by injecting a stop message
+        agent = _get_chat_agent()
+        if agent._busy:
+            agent.inject_message("[BREAK] User requested /break — stop current task immediately.")
+            send_with_budget(chat_id, "\u23f9 Break: sent stop signal to current task.")
+        else:
+            send_with_budget(chat_id, "\u2705 No task is running.")
+        return True
+
+    if lowered.startswith("/budget"):
+        st2 = load_state()
+        spent = float(st2.get("spent_usd") or 0.0)
+        total = float(TOTAL_BUDGET_LIMIT)
+        remaining = max(0, total - spent)
+        from supervisor.state import budget_breakdown
+        breakdown = budget_breakdown(st2)
+        lines = [
+            f"\U0001f4b0 Budget:",
+            f"  Total: ${total:.0f}",
+            f"  Spent: ${spent:.2f}",
+            f"  Remaining: ${remaining:.2f}",
+        ]
+        if breakdown:
+            sorted_cats = sorted(breakdown.items(), key=lambda x: x[1], reverse=True)
+            breakdown_parts = [f"{cat}=${cost:.2f}" for cat, cost in sorted_cats if cost > 0]
+            if breakdown_parts:
+                lines.append(f"  Breakdown: {', '.join(breakdown_parts)}")
+        send_with_budget(chat_id, "\n".join(lines))
+        return True
+
+    if lowered.startswith("/rollback"):
+        send_with_budget(chat_id, "\u267b\ufe0f Rolling back to latest stable...")
+        st2 = load_state()
+        st2["no_approve_mode"] = False
+        st2["tg_offset"] = tg_offset
+        save_state(st2)
+        ok, msg = safe_restart(reason="owner_rollback", unsynced_policy="rescue_and_reset")
+        if not ok:
+            send_with_budget(chat_id, f"\u26a0\ufe0f Rollback failed: {msg}")
+            return True
+        kill_workers()
+        sys.exit(1)
+
+    if lowered.startswith("/no-approve") or lowered.startswith("/noapprove"):
+        st2 = load_state()
+        current = bool(st2.get("no_approve_mode"))
+        st2["no_approve_mode"] = not current
+        save_state(st2)
+        state_str = "ON" if st2["no_approve_mode"] else "OFF"
+        send_with_budget(chat_id, f"\U0001f527 No-approve mode: {state_str}")
+        return True
+
     return ""
 
 
@@ -402,7 +488,7 @@ _last_diag_heartbeat_ts = 0.0
 _last_message_ts: float = time.time()  # Start in active mode after restart
 _ACTIVE_MODE_SEC: int = 300  # 5 min of activity = active polling mode
 
-# Auto-start background consciousness (creator's policy: always on by default)
+# Auto-start background consciousness (default: always on)
 try:
     _consciousness.start()
     log.info("\U0001f9e0 Background consciousness auto-started (default: always on)")

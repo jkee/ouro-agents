@@ -318,6 +318,12 @@ class BackgroundConsciousness:
             parts.append("## Scratchpad\n\n" + clip_text(
                 read_text(scratchpad_path), 8000))
 
+        # User context
+        user_context_path = self._drive_root / "memory" / "USER_CONTEXT.md"
+        if user_context_path.exists():
+            parts.append("## User Context\n\n" + clip_text(
+                read_text(user_context_path), 2000))
+
         # Dialogue summary for continuity
         summary_path = self._drive_root / "memory" / "dialogue_summary.md"
         if summary_path.exists():
@@ -368,7 +374,7 @@ class BackgroundConsciousness:
     _BG_TOOL_WHITELIST = frozenset({
         # Memory & identity
         "send_owner_message", "schedule_task", "update_scratchpad",
-        "update_identity", "set_next_wakeup",
+        "update_identity", "update_user_context", "set_next_wakeup",
         # Knowledge base
         "knowledge_read", "knowledge_write", "knowledge_list",
         # Read-only tools for awareness

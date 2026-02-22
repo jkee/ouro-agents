@@ -82,7 +82,7 @@ CORE_TOOL_NAMES = {
     "run_shell", "claude_code_edit",
     "git_status", "git_diff",
     "schedule_task", "wait_for_task", "get_task_result",
-    "update_scratchpad", "update_identity",
+    "update_scratchpad", "update_identity", "update_user_context",
     "chat_history", "web_search",
     "send_owner_message", "switch_model",
     "request_restart", "promote_to_stable",
