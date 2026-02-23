@@ -3,7 +3,7 @@
 Tools:
   - dropbox_list_files: list files in a Dropbox folder
   - dropbox_download_file: download a file, save to /data/tmp/, return path + base64
-  - dropbox_index_folder: scan folder, analyze with GPT-4o Vision, build index
+  - dropbox_index_folder: scan folder, analyze with gpt-4o Vision, build index
   - dropbox_search_document: search index, download best match, send via Telegram
   - dropbox_show_index: show current index contents
 """
@@ -90,7 +90,7 @@ def _parse_json_safe(content: str, fallback: dict) -> dict:
 
 
 def _analyze_file_with_vision(file_bytes: bytes, filename: str) -> dict:
-    """Use GPT-4o Vision to extract rich document metadata. Fallback on error."""
+    """Use gpt-4o Vision to extract rich document metadata. Fallback on error."""
     empty_schema: dict = {
         "type": "unknown",
         "owner": None,
@@ -149,10 +149,10 @@ def _analyze_file_with_vision(file_bytes: bytes, filename: str) -> dict:
                     '"tags": ["тег1", "тег2"], "language": "ru"}'
                 )
                 resp = client.chat.completions.create(
-                    model="gpt-5-mini",
+                    model="gpt-4o-mini",
                     messages=[{"role": "user", "content": fallback_prompt}],
                     response_format={"type": "json_object"},
-                    max_tokens=400,
+                    max_completion_tokens=400,
                 )
                 return _parse_json_safe(resp.choices[0].message.content, empty_schema)
         else:
@@ -173,7 +173,7 @@ def _analyze_file_with_vision(file_bytes: bytes, filename: str) -> dict:
                 ],
             }],
             response_format={"type": "json_object"},
-            max_tokens=600,
+            max_completion_tokens=5000,
         )
         return _parse_json_safe(resp.choices[0].message.content, empty_schema)
 
@@ -393,7 +393,7 @@ def _dropbox_search_document(ctx: ToolContext, query: str) -> str:
             model="gpt-5-mini",
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"},
-            max_tokens=200,
+            max_completion_tokens=200,
         )
         match = json.loads(resp.choices[0].message.content)
     except Exception as e:
@@ -512,7 +512,7 @@ def get_tools() -> List[ToolEntry]:
             schema={
                 "name": "dropbox_index_folder",
                 "description": (
-                    "Scan a Dropbox folder and build/update the document index using Vision AI (GPT-4o). "
+                    "Scan a Dropbox folder and build/update the document index using Vision AI (gpt-4o). "
                     "For each file: determines document type, extracts key info (name, number/serial, dates, issuer). "
                     "Index is stored at /data/docs_index.json. "
                     "Call when user adds new documents or asks to re-index."
