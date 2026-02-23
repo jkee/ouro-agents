@@ -16,7 +16,7 @@ import logging
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from ouroboros.tools.registry import ToolContext, ToolEntry
 
@@ -24,6 +24,7 @@ log = logging.getLogger(__name__)
 
 _DROPBOX_FOLDER = "/vityai/ouroboros/docs"
 _INDEX_PATH = Path("/data/docs_index.json")
+_CURSOR_PATH = Path("/data/dropbox_cursor.json")
 _TMP_DIR = Path("/data/tmp")
 _MAX_INLINE_BYTES = 5 * 1024 * 1024  # 5 MB
 _SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".pdf", ".gif", ".bmp", ".webp", ".heic", ".tiff"}
@@ -35,11 +36,52 @@ _VISION_PROMPT_PATH = Path(__file__).parent / "VISION_PROMPT.md"
 # ---------------------------------------------------------------------------
 
 def _get_dbx():
+    """Create authenticated Dropbox client.
+
+    Prefers long-lived refresh token auth (DROPBOX_REFRESH_TOKEN + DROPBOX_APP_KEY).
+    Falls back to legacy short-lived DROPBOX_TOKEN.
+    """
     import dropbox  # noqa: PLC0415
-    token = os.environ.get("DROPBOX_TOKEN", "")
-    if not token:
-        raise RuntimeError("DROPBOX_TOKEN not set")
-    return dropbox.Dropbox(token)
+    refresh_token = os.environ.get("DROPBOX_REFRESH_TOKEN", "").strip()
+    app_key = os.environ.get("DROPBOX_APP_KEY", "").strip()
+    legacy_token = os.environ.get("DROPBOX_TOKEN", "").strip()
+
+    if refresh_token and app_key:
+        return dropbox.Dropbox(
+            oauth2_refresh_token=refresh_token,
+            app_key=app_key,
+        )
+    elif legacy_token:
+        log.warning(
+            "Using legacy DROPBOX_TOKEN (short-lived). "
+            "Set DROPBOX_REFRESH_TOKEN + DROPBOX_APP_KEY for persistent auth."
+        )
+        return dropbox.Dropbox(legacy_token)
+    else:
+        raise RuntimeError(
+            "Dropbox auth not configured. "
+            "Set DROPBOX_REFRESH_TOKEN + DROPBOX_APP_KEY (recommended) "
+            "or DROPBOX_TOKEN (legacy, expires)."
+        )
+
+
+def _load_cursor() -> Optional[str]:
+    """Load persisted Dropbox cursor from disk. Returns None if not found."""
+    try:
+        data = json.loads(_CURSOR_PATH.read_text(encoding="utf-8"))
+        return data.get("cursor")
+    except (FileNotFoundError, json.JSONDecodeError):
+        return None
+
+
+def _save_cursor(cursor: str) -> None:
+    """Persist Dropbox cursor to disk for incremental polling."""
+    _CURSOR_PATH.parent.mkdir(parents=True, exist_ok=True)
+    _CURSOR_PATH.write_text(
+        json.dumps({"cursor": cursor, "ts": datetime.now(timezone.utc).isoformat(), "folder": _DROPBOX_FOLDER},
+                   ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
 
 
 def _load_index() -> list:
@@ -357,7 +399,9 @@ def _dropbox_index_folder(ctx: ToolContext, folder_path: str = _DROPBOX_FOLDER) 
                 _, dl_resp = dbx.files_download(path)
                 file_bytes = dl_resp.content
                 analysis = _analyze_file_with_vision(file_bytes, entry.name)
-                new_index.append(_build_index_entry(path, entry.name, entry.size, modified, analysis))
+                idx_entry = _build_index_entry(path, entry.name, entry.size, modified, analysis)
+                idx_entry["rev"] = entry.rev
+                new_index.append(idx_entry)
                 indexed_count += 1
                 log.info("Indexed: %s → %s", entry.name, analysis.get("type"))
             except Exception as idx_err:
@@ -492,6 +536,138 @@ def _dropbox_show_index(ctx: ToolContext) -> str:
     return "\n".join(lines)
 
 
+def _process_changed_entries(entries: list, dbx) -> list:
+    """Process Dropbox delta entries: index new/changed files, remove deleted ones."""
+    import dropbox as dbx_mod  # noqa: PLC0415
+
+    existing_index = _load_index()
+    index_by_path = {item["path"]: item for item in existing_index}
+
+    new_files = []
+    modified_paths = set()
+
+    for entry in entries:
+        path = entry.path_lower
+
+        # Deletion event
+        if isinstance(entry, dbx_mod.files.DeletedMetadata):
+            if path in index_by_path:
+                del index_by_path[path]
+                log.info("Removed deleted file from index: %s", path)
+            continue
+
+        if not isinstance(entry, dbx_mod.files.FileMetadata):
+            continue  # skip folders
+
+        ext = Path(entry.name).suffix.lower()
+        if ext not in _SUPPORTED_EXTENSIONS:
+            continue
+
+        if entry.name.startswith((".", "~", "_")) or entry.name.endswith(".tmp"):
+            continue  # skip temp/hidden files
+
+        # Rev-based dedup: skip if already indexed with same revision
+        existing = index_by_path.get(path)
+        if existing and existing.get("rev") == entry.rev:
+            log.debug("Skipping unchanged file (same rev): %s", path)
+            continue
+
+        modified_paths.add(path)
+
+        # Download + Vision analysis
+        try:
+            _, dl_resp = dbx.files_download(path)
+            file_bytes = dl_resp.content
+        except Exception as dl_err:
+            log.warning("Could not download %s: %s", path, dl_err)
+            continue
+
+        modified = entry.server_modified.isoformat() if entry.server_modified else ""
+        analysis = _analyze_file_with_vision(file_bytes, entry.name)
+
+        index_entry = _build_index_entry(path, entry.name, entry.size, modified, analysis)
+        index_entry["rev"] = entry.rev  # store rev for future dedup
+
+        index_by_path[path] = index_entry
+        new_files.append({"name": entry.name, "type": analysis.get("type", "unknown"), "path": path})
+        log.info("Auto-indexed: %s → %s", entry.name, analysis.get("type"))
+
+    # Save updated index
+    _save_index(list(index_by_path.values()))
+
+    return new_files
+
+
+def _dropbox_check_updates(ctx: ToolContext) -> str:
+    """Poll Dropbox for new/changed files since last cursor. Auto-index any new documents."""
+    try:
+        import dropbox as dbx_mod  # noqa: PLC0415
+        dbx = _get_dbx()
+
+        # --- Bootstrap if no cursor ---
+        cursor = _load_cursor()
+        if cursor is None:
+            log.info("dropbox_check_updates: no cursor — bootstrapping from folder listing")
+            try:
+                result = dbx.files_list_folder(_DROPBOX_FOLDER, recursive=True)
+            except Exception as list_err:
+                if "not_found" in str(list_err).lower():
+                    try:
+                        dbx.files_create_folder_v2(_DROPBOX_FOLDER)
+                        log.info("Created Dropbox folder: %s", _DROPBOX_FOLDER)
+                    except Exception:
+                        pass
+                    _save_cursor("")
+                    return json.dumps({"status": "bootstrapped", "new_files": [], "message": f"Folder {_DROPBOX_FOLDER} not found, created. Drop documents there."})
+                return json.dumps({"status": "error", "message": str(list_err)})
+            _save_cursor(result.cursor)
+            # Process any existing files as "new" on first run
+            all_entries = list(result.entries)
+            while result.has_more:
+                result = dbx.files_list_folder_continue(result.cursor)
+                all_entries.extend(result.entries)
+                _save_cursor(result.cursor)
+            if all_entries:
+                new_files = _process_changed_entries(all_entries, dbx)
+                return json.dumps({"status": "bootstrapped", "new_files": new_files, "message": f"Initial scan: {len(new_files)} document(s) indexed."})
+            return json.dumps({"status": "bootstrapped", "new_files": [], "message": "Folder is empty — drop documents to index them automatically."})
+
+        # --- Cursor too old or corrupted? ---
+        if not cursor:
+            # cursor was saved as empty string (folder didn't exist at bootstrap time)
+            # try again from scratch
+            _CURSOR_PATH.unlink(missing_ok=True)
+            return _dropbox_check_updates(ctx)
+
+        # --- Normal incremental poll ---
+        try:
+            result = dbx.files_list_folder_continue(cursor)
+        except Exception as cont_err:
+            err_str = str(cont_err).lower()
+            if "reset" in err_str or "expired" in err_str or "malformed_cursor" in err_str:
+                log.warning("Dropbox cursor reset/expired — re-bootstrapping")
+                _CURSOR_PATH.unlink(missing_ok=True)
+                return _dropbox_check_updates(ctx)
+            return json.dumps({"status": "error", "message": str(cont_err)})
+
+        all_entries = list(result.entries)
+        while result.has_more:
+            result = dbx.files_list_folder_continue(result.cursor)
+            all_entries.extend(result.entries)
+        _save_cursor(result.cursor)
+
+        if not all_entries:
+            return json.dumps({"status": "no_changes", "new_files": []})
+
+        new_files = _process_changed_entries(all_entries, dbx)
+        msg = f"{len(new_files)} new/updated document(s) auto-indexed." if new_files else "Changes detected but no new documents to index."
+        return json.dumps({"status": "ok", "new_files": new_files, "message": msg})
+
+    except Exception as e:
+        log.error("dropbox_check_updates failed: %s", e, exc_info=True)
+        return json.dumps({"status": "error", "message": str(e)})
+
+
 # ---------------------------------------------------------------------------
 # Tool registration
 # ---------------------------------------------------------------------------
@@ -606,5 +782,25 @@ def get_tools() -> List[ToolEntry]:
             },
             handler=_dropbox_show_index,
             timeout_sec=10,
+        ),
+        ToolEntry(
+            name="dropbox_check_updates",
+            schema={
+                "name": "dropbox_check_updates",
+                "description": (
+                    "Check Dropbox for new or changed files since the last poll. "
+                    "Uses a persistent cursor for efficient incremental detection — only fetches deltas. "
+                    "Auto-downloads and indexes any new documents using Vision AI. "
+                    "Call periodically (e.g. every 5 minutes) or when user asks to check for new documents. "
+                    "On first call, bootstraps the cursor by scanning the entire folder."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {},
+                    "required": [],
+                },
+            },
+            handler=_dropbox_check_updates,
+            timeout_sec=300,
         ),
     ]

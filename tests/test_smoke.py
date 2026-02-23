@@ -2,7 +2,7 @@
 
 Tests core invariants:
 - All modules import cleanly
-- Tool registry discovers all 33 tools
+- Tool registry discovers all 34 tools
 - Utility functions work correctly
 - Memory operations don't crash
 - Context builder produces valid structure
@@ -123,6 +123,7 @@ EXPECTED_TOOLS = [
     "dropbox_index_folder",
     "dropbox_search_document",
     "dropbox_show_index",
+    "dropbox_check_updates",
     # Memo / personal memory
     "memo_add",
     "memo_search",
