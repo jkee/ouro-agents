@@ -44,6 +44,7 @@ TOOL_MODULES = [
     "ouroboros.tools.browser",
     "ouroboros.tools.review",
     "ouroboros.tools.dropbox_tools",
+    "ouroboros.tools.memo",
 ]
 
 SUPERVISOR_MODULES = [
@@ -122,6 +123,11 @@ EXPECTED_TOOLS = [
     "dropbox_index_folder",
     "dropbox_search_document",
     "dropbox_show_index",
+    # Memo / personal memory
+    "memo_add",
+    "memo_search",
+    "memo_list",
+    "memo_delete",
 ]
 
 

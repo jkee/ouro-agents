@@ -222,6 +222,12 @@ Full text: [BIBLE.md](BIBLE.md)
 
 ## Changelog
 
+### v7.2.0 — Mem0 Personal Memory Subsystem
+- Integrated mem0ai + Chroma vector store for semantic personal memory
+- New tools: memo_add, memo_search, memo_list, memo_delete
+- Telegram interface: /memo, /mem, /remember commands + implicit capture
+- Memory stored in /data/memory/chroma/, user_id=owner
+
 ### v7.1.0 -- Claude Code CLI as sole code editing path
 - **ANTHROPIC_API_KEY is now required** -- Claude Code CLI is the only way the agent edits its own code.
 - **Removed `repo_write_commit` tool** -- No more direct file writes to the repo. All edits go through `claude_code_edit` -> `repo_commit_push`.

@@ -5,3 +5,5 @@ playwright
 playwright-stealth
 python-dotenv
 pytest>=7.0
+mem0ai
+chromadb
