@@ -123,6 +123,7 @@ EXPECTED_TOOLS = [
     "dropbox_index_folder",
     "dropbox_search_document",
     "dropbox_show_index",
+    "dropbox_auth_status",
     "dropbox_check_updates",
     # Memo / personal memory
     "memo_add",

@@ -73,35 +73,33 @@ def _is_auth_error(e: Exception) -> bool:
     )
 
 
-_AUTH_HELP_MESSAGE = """\
-⚠️ Dropbox auth failed (token expired).
+_AUTH_HELP_MESSAGE = """⚠️ Dropbox auth failed (token expired or not configured).
 
-To fix, set up a Refresh Token (one-time setup):
+To set up persistent auth (one-time):
 
 1. Go to https://www.dropbox.com/developers/apps → your app → Settings
    Copy: App key + App secret
 
-2. Run this Python script locally:
-```python
-from dropbox import DropboxOAuth2FlowNoRedirect
-APP_KEY = "your_app_key"
-APP_SECRET = "your_app_secret"
-flow = DropboxOAuth2FlowNoRedirect(
-    APP_KEY, APP_SECRET,
-    token_access_type="offline",
-    use_pkce=True,
-)
-print("Open URL:", flow.start())
-code = input("Paste code: ").strip()
-result = flow.finish(code)
-print("DROPBOX_REFRESH_TOKEN =", result.refresh_token)
-```
+2. Run this Python script locally to get a refresh token:
 
-3. Add to your .env file:
+    from dropbox import DropboxOAuth2FlowNoRedirect
+    APP_KEY = "your_app_key"
+    APP_SECRET = "your_app_secret"
+    flow = DropboxOAuth2FlowNoRedirect(
+        APP_KEY, APP_SECRET,
+        token_access_type="offline",
+        use_pkce=True,
+    )
+    print("Open URL:", flow.start())
+    code = input("Paste code: ").strip()
+    result = flow.finish(code)
+    print("DROPBOX_REFRESH_TOKEN =", result.refresh_token)
+
+3. Add to .env:
    DROPBOX_APP_KEY=your_app_key
-   DROPBOX_REFRESH_TOKEN=the_refresh_token_from_step_2
+   DROPBOX_REFRESH_TOKEN=the_refresh_token
 
-4. Remove (or keep as backup): DROPBOX_TOKEN\
+4. Restart the agent.
 """
 
 
@@ -353,16 +351,16 @@ def _dropbox_auth_status(ctx: ToolContext) -> str:
             "auth_method": auth_method,
             "status": "ok",
             "account_name": account.name.display_name,
-            "message": "Dropbox authentication is working correctly.",
+            "email": account.email,
+            "message": "✅ Dropbox auth is working correctly.",
         }, ensure_ascii=False)
     except Exception as e:
-        status = "expired" if _is_auth_error(e) else "error"
         return json.dumps({
-            "configured": configured,
+            "configured": True,
             "auth_method": auth_method,
-            "status": status,
+            "status": "expired" if _is_auth_error(e) else "error",
             "account_name": None,
-            "message": _AUTH_HELP_MESSAGE,
+            "message": _AUTH_HELP_MESSAGE if _is_auth_error(e) else f"Error: {e}",
         }, ensure_ascii=False)
 
 
