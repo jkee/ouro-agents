@@ -59,7 +59,7 @@ assert GITHUB_USER and str(GITHUB_USER).strip(), "GITHUB_USER not set. Add it to
 assert GITHUB_REPO and str(GITHUB_REPO).strip(), "GITHUB_REPO not set. Add it to your .env file."
 MAX_WORKERS = int(get_cfg("OUROBOROS_MAX_WORKERS", default="5") or "5")
 MODEL_MAIN = get_cfg("OUROBOROS_MODEL", default="anthropic/claude-sonnet-4.6")
-MODEL_CODE = get_cfg("OUROBOROS_MODEL_CODE", default="anthropic/claude-sonnet-4.6")
+MODEL_CODE = get_cfg("OUROBOROS_MODEL_CODE", default="anthropic/claude-opus-4-6")
 MODEL_LIGHT = get_cfg("OUROBOROS_MODEL_LIGHT", default=DEFAULT_LIGHT_MODEL)
 
 BUDGET_REPORT_EVERY_MESSAGES = 10
