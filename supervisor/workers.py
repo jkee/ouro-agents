@@ -34,8 +34,6 @@ DRIVE_ROOT: pathlib.Path = pathlib.Path(os.environ.get("DRIVE_ROOT", "/data"))
 MAX_WORKERS: int = 5
 SOFT_TIMEOUT_SEC: int = 600
 HARD_TIMEOUT_SEC: int = 1800
-HEARTBEAT_STALE_SEC: int = 120
-QUEUE_MAX_RETRIES: int = 1
 BRANCH_DEV: str = "ouroboros"
 BRANCH_STABLE: str = "ouroboros-stable"
 
@@ -111,11 +109,6 @@ QUEUE_SEQ_COUNTER_REF: Dict[str, int] = {"value": 0}
 # Lock for all mutations to PENDING, RUNNING, WORKERS shared collections.
 # Canonical definition lives in queue.py; imported here for use by assign_tasks/kill_workers.
 from supervisor.queue import _queue_lock
-
-
-def get_running_task_ids() -> List[str]:
-    """Return list of task IDs currently being processed by workers."""
-    return [w.busy_task_id for w in WORKERS.values() if w.busy_task_id]
 
 
 # ---------------------------------------------------------------------------
@@ -521,13 +514,8 @@ def ensure_workers_healthy() -> None:
     # Grace period: skip health check right after spawn — workers need time to initialize
     if (time.time() - _LAST_SPAWN_TIME) < _SPAWN_GRACE_SEC:
         return
-    busy_crashes = 0
-    dead_detections = 0
     for wid, w in list(WORKERS.items()):
         if not w.proc.is_alive():
-            dead_detections += 1
-            if w.busy_task_id is not None:
-                busy_crashes += 1
             append_jsonl(
                 DRIVE_ROOT / "logs" / "supervisor.jsonl",
                 {
@@ -538,11 +526,12 @@ def ensure_workers_healthy() -> None:
                     "busy_task_id": w.busy_task_id,
                 },
             )
-            if w.busy_task_id and w.busy_task_id in RUNNING:
-                meta = RUNNING.pop(w.busy_task_id) or {}
-                task = meta.get("task") if isinstance(meta, dict) else None
-                if isinstance(task, dict):
-                    queue.enqueue_task(task, front=True)
+            with _queue_lock:
+                if w.busy_task_id and w.busy_task_id in RUNNING:
+                    meta = RUNNING.pop(w.busy_task_id) or {}
+                    task = meta.get("task") if isinstance(meta, dict) else None
+                    if isinstance(task, dict):
+                        queue.enqueue_task(task, front=True)
             respawn_worker(wid)
             queue.persist_queue_snapshot(reason="worker_respawn_after_crash")
 

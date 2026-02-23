@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from ouroboros.utils import (
     utc_now_iso, read_text, clip_text, estimate_tokens, get_git_info,
+    get_budget_remaining,
 )
 from ouroboros.memory import Memory
 
@@ -71,16 +72,10 @@ def _build_runtime_section(env: Any, task: Dict[str, Any]) -> str:
     try:
         state_json = _safe_read(env.drive_path("state/state.json"), fallback="{}")
         state_data = json.loads(state_json)
-        or_remaining = state_data.get("openrouter_limit_remaining")
-        if or_remaining is not None:
-            remaining_usd = float(or_remaining)
-            total_usd = float(state_data.get("openrouter_limit") or remaining_usd)
-            spent_usd = total_usd - remaining_usd
-        else:
-            # Fallback if OpenRouter API hasn't been called yet
-            spent_usd = float(state_data.get("spent_usd", 0))
-            total_usd = float(os.environ.get("TOTAL_BUDGET", "0"))
-            remaining_usd = max(0, total_usd - spent_usd) if total_usd > 0 else None
+        remaining_usd = get_budget_remaining(state_data)
+        or_limit = state_data.get("openrouter_limit")
+        total_usd = float(or_limit) if or_limit is not None else float(os.environ.get("TOTAL_BUDGET", "0"))
+        spent_usd = (total_usd - remaining_usd) if remaining_usd is not None else float(state_data.get("spent_usd", 0))
         budget_info = {"total_usd": total_usd, "spent_usd": spent_usd, "remaining_usd": remaining_usd}
     except Exception:
         log.debug("Failed to calculate budget info for context", exc_info=True)
@@ -193,17 +188,16 @@ def _build_health_invariants(env: Any) -> str:
     try:
         state_json = read_text(env.drive_path("state/state.json"))
         state_data = json.loads(state_json)
-        or_remaining = state_data.get("openrouter_limit_remaining")
-        if or_remaining is not None:
-            remaining = float(or_remaining)
+        remaining = get_budget_remaining(state_data)
+        if remaining is not None:
             if remaining < 10:
-                checks.append(f"CRITICAL: LOW BUDGET — OpenRouter remaining=${remaining:.2f}")
+                checks.append(f"CRITICAL: LOW BUDGET — remaining=${remaining:.2f}")
             elif remaining < 50:
-                checks.append(f"WARNING: LOW BUDGET — OpenRouter remaining=${remaining:.2f}")
+                checks.append(f"WARNING: LOW BUDGET — remaining=${remaining:.2f}")
             else:
                 checks.append(f"OK: budget remaining=${remaining:.2f}")
         else:
-            checks.append("OK: budget (OpenRouter limit not yet fetched)")
+            checks.append("OK: budget (not yet fetched)")
     except Exception:
         pass
 

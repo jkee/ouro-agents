@@ -24,7 +24,7 @@ log = logging.getLogger(__name__)
 from ouroboros.utils import (
     utc_now_iso, read_text, append_jsonl,
     safe_relpath, truncate_for_log,
-    get_git_info, sanitize_task_for_event,
+    get_git_info, sanitize_task_for_event, get_budget_remaining,
 )
 from ouroboros.llm import LLMClient, add_usage
 from ouroboros.tools import ToolRegistry
@@ -269,19 +269,12 @@ class OuroborosAgent:
             state_path = self.env.drive_path("state") / "state.json"
             state_data = json.loads(read_text(state_path))
 
-            or_remaining = state_data.get("openrouter_limit_remaining")
-            if or_remaining is not None:
-                remaining = float(or_remaining)
-                total = float(state_data.get("openrouter_limit") or remaining)
-                spent = total - remaining
-            else:
-                # Fallback before first OpenRouter API call
-                total_budget_str = os.environ.get("TOTAL_BUDGET", "0")
-                total = float(total_budget_str)
-                if total <= 0:
-                    return {"status": "unconfigured"}, 0
-                spent = float(state_data.get("spent_usd", 0))
-                remaining = max(0, total - spent)
+            remaining = get_budget_remaining(state_data)
+            if remaining is None:
+                return {"status": "unconfigured"}, 0
+            or_limit = state_data.get("openrouter_limit")
+            total = float(or_limit) if or_limit is not None else remaining
+            spent = total - remaining
 
             if remaining < 10:
                 status = "emergency"
@@ -392,15 +385,7 @@ class OuroborosAgent:
         try:
             state_path = self.env.drive_path("state") / "state.json"
             state_data = json.loads(read_text(state_path))
-            or_remaining = state_data.get("openrouter_limit_remaining")
-            if or_remaining is not None:
-                budget_remaining = float(or_remaining)
-            else:
-                # Fallback before first OpenRouter API call
-                total_budget = float(os.environ.get("TOTAL_BUDGET", "0"))
-                spent = float(state_data.get("spent_usd", 0))
-                if total_budget > 0:
-                    budget_remaining = max(0, total_budget - spent)
+            budget_remaining = get_budget_remaining(state_data)
         except Exception:
             pass
 

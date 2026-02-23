@@ -158,7 +158,7 @@ git_ops_init(
 from supervisor.queue import (
     enqueue_task, enforce_task_timeouts, enqueue_evolution_task_if_needed,
     persist_queue_snapshot, restore_pending_from_snapshot,
-    cancel_task_by_id, queue_review_task, sort_pending,
+    cancel_task_by_id, queue_review_task, sort_pending, _queue_lock,
 )
 
 from supervisor.workers import (
@@ -415,8 +415,9 @@ def _handle_supervisor_command(text: str, chat_id: int, tg_offset: int = 0):
         st2["evolution_mode_enabled"] = bool(turn_on)
         save_state(st2)
         if not turn_on:
-            PENDING[:] = [t for t in PENDING if str(t.get("type")) != "evolution"]
-            sort_pending()
+            with _queue_lock:
+                PENDING[:] = [t for t in PENDING if str(t.get("type")) != "evolution"]
+                sort_pending()
             persist_queue_snapshot(reason="evolve_off")
         state_str = "ON" if turn_on else "OFF"
         send_with_budget(chat_id, f"\U0001f9ec Evolution: {state_str}")
