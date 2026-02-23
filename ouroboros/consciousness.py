@@ -61,6 +61,8 @@ class BackgroundConsciousness:
         self._stop_event = threading.Event()
         self._wakeup_event = threading.Event()
         self._next_wakeup_sec: float = 300.0
+        self._last_dropbox_poll: float = 0.0
+        self._dropbox_poll_interval_sec: float = 300.0
         self._observations: queue.Queue = queue.Queue()
         self._deferred_events: list = []
 
@@ -179,6 +181,7 @@ class BackgroundConsciousness:
 
     def _think(self) -> None:
         """One thinking cycle: build context, call LLM, execute tools iteratively."""
+        self._maybe_poll_dropbox()
         self._maybe_schedule_arch_review()
         context = self._build_context()
         model = self._model
@@ -489,6 +492,79 @@ class BackgroundConsciousness:
         })
 
         return result_str
+
+    # -------------------------------------------------------------------
+    # Dropbox automatic polling (no LLM round needed)
+    # -------------------------------------------------------------------
+
+    def _maybe_poll_dropbox(self) -> None:
+        """Directly poll Dropbox for new files without spending an LLM round.
+
+        If new files are found, injects an observation so the LLM will
+        notify the user via send_owner_message.
+        """
+        has_creds = (
+            os.environ.get("DROPBOX_TOKEN") or
+            os.environ.get("DROPBOX_REFRESH_TOKEN")
+        )
+        if not has_creds:
+            return
+
+        now = time.time()
+        if now - self._last_dropbox_poll < self._dropbox_poll_interval_sec:
+            return
+
+        self._last_dropbox_poll = now
+
+        try:
+            from ouroboros.tools.dropbox_tools import _dropbox_check_updates
+            from ouroboros.tools.registry import ToolContext
+
+            ctx = ToolContext(
+                repo_dir=self._repo_dir,
+                drive_root=self._drive_root,
+                current_chat_id=self._owner_chat_id_fn(),
+            )
+            if not hasattr(ctx, "pending_events"):
+                ctx.pending_events = []
+
+            result_str = _dropbox_check_updates(ctx)
+
+            import json as _json
+            result = _json.loads(result_str)
+
+            new_files = result.get("new_files", [])
+            status = result.get("status", "")
+
+            append_jsonl(self._drive_root / "logs" / "events.jsonl", {
+                "ts": utc_now_iso(),
+                "type": "dropbox_auto_poll",
+                "status": status,
+                "new_files_count": len(new_files),
+            })
+
+            if new_files:
+                file_summaries = ", ".join(
+                    f"{f.get('name', '?')} ({f.get('type', 'unknown')})"
+                    for f in new_files[:5]
+                )
+                if len(new_files) > 5:
+                    file_summaries += f" ... and {len(new_files) - 5} more"
+
+                observation = (
+                    f"DROPBOX NEW FILES DETECTED: {len(new_files)} new document(s) were automatically indexed: "
+                    f"{file_summaries}. "
+                    f"Use send_owner_message to notify Viktor that new documents were found and indexed. "
+                    f"Be brief: just say how many files, their types, and that they're searchable."
+                )
+                self.inject_observation(observation)
+
+        except Exception as e:
+            append_jsonl(self._drive_root / "logs" / "events.jsonl", {
+                "ts": utc_now_iso(),
+                "type": "dropbox_auto_poll_error",
+                "error": repr(e),
+            })
 
     # -------------------------------------------------------------------
     # Architecture review scheduling
