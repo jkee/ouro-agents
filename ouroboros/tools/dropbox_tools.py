@@ -27,6 +27,7 @@ _INDEX_PATH = Path("/data/docs_index.json")
 _TMP_DIR = Path("/data/tmp")
 _MAX_INLINE_BYTES = 5 * 1024 * 1024  # 5 MB
 _SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".pdf", ".gif", ".bmp", ".webp", ".heic", ".tiff"}
+_VISION_PROMPT_PATH = Path(__file__).parent / "VISION_PROMPT.md"
 
 
 # ---------------------------------------------------------------------------
@@ -53,13 +54,66 @@ def _save_index(index: list) -> None:
     _INDEX_PATH.write_text(json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def _load_vision_prompt() -> str:
+    """Read VISION_PROMPT.md and extract the section starting with 'You are a document analysis expert.'"""
+    try:
+        text = _VISION_PROMPT_PATH.read_text(encoding="utf-8")
+        marker = "You are a document analysis expert."
+        idx = text.find(marker)
+        if idx != -1:
+            return text[idx:]
+        return text
+    except FileNotFoundError:
+        return (
+            "You are a document analysis expert. Analyze this document image and return ONLY valid JSON:\n"
+            '{"type": "document type", "type_ru": "тип на русском", "description": "brief description", '
+            '"person_names": [], "document_number": "", "issuer": "", '
+            '"key_dates": {"issued": "", "expires": "", "other": ""}, '
+            '"language": "ru/en/other", "country": "", "tags": []}'
+        )
+
+
+def _parse_json_safe(content: str, fallback: dict) -> dict:
+    """Parse JSON from LLM response; on failure try to extract JSON substring."""
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError:
+        import re  # noqa: PLC0415
+        m = re.search(r'\{.*\}', content, re.DOTALL)
+        if m:
+            try:
+                return json.loads(m.group())
+            except json.JSONDecodeError:
+                pass
+        log.warning("Could not parse JSON from LLM response: %s", content[:200])
+        return fallback
+
+
 def _analyze_file_with_vision(file_bytes: bytes, filename: str) -> dict:
-    """Use GPT-4o Vision to extract document type/description. Fallback on error."""
+    """Use GPT-4o Vision to extract rich document metadata. Fallback on error."""
+    empty_schema: dict = {
+        "type": "unknown",
+        "owner": None,
+        "description": filename,
+        "tags": [],
+        "language": "",
+    }
+    _VISION_PROMPT = (
+        "Проанализируй документ и извлеки следующие данные в JSON:\n"
+        "{\n"
+        '  "type": "точный тип документа (паспорт РФ / СНИЛС / загранпаспорт / ОМС / ИНН / водительское удостоверение / свидетельство о рождении / другое)",\n'
+        '  "owner": "ФИО владельца документа как указано в документе (или null если не видно)",\n'
+        '  "description": "подробное описание: тип, владелец, серия/номер (частично скрыт), дата выдачи, кем выдан, срок действия если есть",\n'
+        '  "tags": ["тег1", "тег2", "tag_english"],\n'
+        '  "language": "ru/en/другой"\n'
+        "}\n"
+        "Извлекай реальные данные из документа. Номера документов — частично скрывай последние цифры для безопасности."
+    )
     try:
         import openai  # noqa: PLC0415
         api_key = os.environ.get("OPENAI_API_KEY", "")
         if not api_key:
-            return {"type": "unknown", "description": filename, "tags": []}
+            return empty_schema
 
         client = openai.OpenAI(api_key=api_key)
         ext = Path(filename).suffix.lower()
@@ -82,18 +136,20 @@ def _analyze_file_with_vision(file_bytes: bytes, filename: str) -> dict:
                 pass
 
             if b64 is None:
-                # Filename-only fallback
-                prompt = (
-                    f"Determine document type from filename: '{filename}'. "
-                    "Reply in JSON: {\"type\": \"...\", \"description\": \"brief\", \"tags\": [\"tag\"]}"
+                # Filename-only fallback — return full structured schema
+                fallback_prompt = (
+                    f"Определи тип документа по имени файла: '{filename}'.\n"
+                    "Верни ТОЛЬКО валидный JSON:\n"
+                    '{"type": "тип документа", "owner": null, "description": "краткое описание", '
+                    '"tags": ["тег1", "тег2"], "language": "ru"}'
                 )
                 resp = client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=[{"role": "user", "content": prompt}],
+                    model="gpt-4o",
+                    messages=[{"role": "user", "content": fallback_prompt}],
                     response_format={"type": "json_object"},
-                    max_tokens=200,
+                    max_tokens=400,
                 )
-                return json.loads(resp.choices[0].message.content)
+                return _parse_json_safe(resp.choices[0].message.content, empty_schema)
         else:
             ext_mime = {
                 ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
@@ -102,34 +158,23 @@ def _analyze_file_with_vision(file_bytes: bytes, filename: str) -> dict:
             b64 = base64.b64encode(file_bytes).decode()
             mime = ext_mime.get(ext, f"image/{ext.lstrip('.')}")
 
-        prompt = (
-            "Analyze this document image and identify:\n"
-            "1. Document type (passport, ID card, driver license, insurance policy, diploma, "
-            "birth certificate, contract, etc.)\n"
-            "2. Brief description (owner name if visible, number/serial if visible, issue date, issuer)\n"
-            "3. Search tags (synonyms and related terms for findability)\n\n"
-            "Reply ONLY in JSON:\n"
-            "{\"type\": \"document type\", \"description\": \"brief description\", "
-            "\"tags\": [\"tag1\", \"tag2\"]}\n\n"
-            "Do not include sensitive full numbers — only type and general description."
-        )
         resp = client.chat.completions.create(
             model="gpt-4o",
             messages=[{
                 "role": "user",
                 "content": [
                     {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}", "detail": "high"}},
-                    {"type": "text", "text": prompt},
+                    {"type": "text", "text": _VISION_PROMPT},
                 ],
             }],
             response_format={"type": "json_object"},
-            max_tokens=500,
+            max_tokens=600,
         )
-        return json.loads(resp.choices[0].message.content)
+        return _parse_json_safe(resp.choices[0].message.content, empty_schema)
 
     except Exception as e:
         log.warning("Vision analysis failed for %s: %s", filename, e)
-        return {"type": "unknown", "description": filename, "tags": []}
+        return empty_schema
 
 
 # ---------------------------------------------------------------------------
@@ -258,12 +303,14 @@ def _dropbox_index_folder(ctx: ToolContext, folder_path: str = _DROPBOX_FOLDER) 
                 new_index.append({
                     "path": path,
                     "name": entry.name,
-                    "type": analysis.get("type", "unknown"),
-                    "description": analysis.get("description", entry.name),
-                    "tags": analysis.get("tags", []),
                     "size": entry.size,
                     "modified": modified,
                     "indexed_at": datetime.now(timezone.utc).isoformat(),
+                    "type": analysis.get("type", "unknown"),
+                    "owner": analysis.get("owner"),
+                    "description": analysis.get("description", entry.name),
+                    "tags": analysis.get("tags", []),
+                    "language": analysis.get("language", ""),
                 })
                 indexed_count += 1
                 log.info("Indexed: %s → %s", entry.name, analysis.get("type"))
@@ -274,12 +321,14 @@ def _dropbox_index_folder(ctx: ToolContext, folder_path: str = _DROPBOX_FOLDER) 
                 new_index.append({
                     "path": path,
                     "name": entry.name,
-                    "type": "unknown",
-                    "description": entry.name,
-                    "tags": [],
                     "size": entry.size,
                     "modified": modified,
                     "indexed_at": datetime.now(timezone.utc).isoformat(),
+                    "type": "unknown",
+                    "owner": None,
+                    "description": entry.name,
+                    "tags": [],
+                    "language": "",
                 })
 
         _save_index(new_index)
@@ -324,7 +373,8 @@ def _dropbox_search_document(ctx: ToolContext, query: str) -> str:
         client = openai.OpenAI(api_key=api_key)
 
         catalog = "\n".join([
-            f"{i}. {item['type']} — {item['description']} [tags: {', '.join(item.get('tags', []))}]"
+            f"{i}. {item['type']} — владелец: {item.get('owner', '?')} — {item['description']}"
+            f" | Tags: {', '.join(item.get('tags', []))}"
             for i, item in enumerate(index)
         ])
         prompt = (
@@ -389,13 +439,16 @@ def _dropbox_show_index(ctx: ToolContext) -> str:
         size_kb = item.get("size", 0) // 1024
         modified = (item.get("modified") or "")[:10]
         indexed_at = (item.get("indexed_at") or "")[:10]
-        lines.append(
-            f"\n{i + 1}. [{item.get('type', '?')}] {item['name']}\n"
-            f"   Description: {item.get('description', '—')}\n"
-            f"   Tags: {tags}\n"
-            f"   Size: {size_kb} KB | Modified: {modified} | Indexed: {indexed_at}\n"
-            f"   Path: {item['path']}"
-        )
+        entry_lines = [
+            f"\n{i + 1}. [{item.get('type', '?')}] {item['name']}",
+            f"   Description: {item.get('description', '—')}",
+        ]
+        if item.get("owner"):
+            entry_lines.append(f"   Owner: {item['owner']}")
+        entry_lines.append(f"   Tags: {tags}")
+        entry_lines.append(f"   Size: {size_kb} KB | Modified: {modified} | Indexed: {indexed_at}")
+        entry_lines.append(f"   Path: {item['path']}")
+        lines.append("\n".join(entry_lines))
     return "\n".join(lines)
 
 
