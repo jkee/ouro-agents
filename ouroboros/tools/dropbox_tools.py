@@ -423,9 +423,9 @@ def _dropbox_search_document(ctx: ToolContext, query: str) -> str:
             model="gpt-5-mini",
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"},
-            max_completion_tokens=200,
+            max_completion_tokens=3000,
         )
-        match = json.loads(resp.choices[0].message.content)
+        match = _parse_json_safe(resp.choices[0].message.content, {"found": False, "index": None, "reasoning": "parse error"})
     except Exception as e:
         log.warning("dropbox_search_document LLM search failed: %s", e)
         return f"⚠️ Search failed: {e}"
