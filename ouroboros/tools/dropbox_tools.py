@@ -52,10 +52,6 @@ def _get_dbx():
             app_key=app_key,
         )
     elif legacy_token:
-        log.warning(
-            "Using legacy DROPBOX_TOKEN (short-lived). "
-            "Set DROPBOX_REFRESH_TOKEN + DROPBOX_APP_KEY for persistent auth."
-        )
         return dropbox.Dropbox(legacy_token)
     else:
         raise RuntimeError(
@@ -63,6 +59,50 @@ def _get_dbx():
             "Set DROPBOX_REFRESH_TOKEN + DROPBOX_APP_KEY (recommended) "
             "or DROPBOX_TOKEN (legacy, expires)."
         )
+
+
+def _is_auth_error(e: Exception) -> bool:
+    """Return True if the exception is a Dropbox auth/expired-token error."""
+    cls_name = type(e).__name__.lower()
+    err_str = str(e).lower()
+    return (
+        "autherror" in cls_name
+        or "expired_access_token" in err_str
+        or "auth_error" in err_str
+        or "invalid_access_token" in err_str
+    )
+
+
+_AUTH_HELP_MESSAGE = """\
+⚠️ Dropbox auth failed (token expired).
+
+To fix, set up a Refresh Token (one-time setup):
+
+1. Go to https://www.dropbox.com/developers/apps → your app → Settings
+   Copy: App key + App secret
+
+2. Run this Python script locally:
+```python
+from dropbox import DropboxOAuth2FlowNoRedirect
+APP_KEY = "your_app_key"
+APP_SECRET = "your_app_secret"
+flow = DropboxOAuth2FlowNoRedirect(
+    APP_KEY, APP_SECRET,
+    token_access_type="offline",
+    use_pkce=True,
+)
+print("Open URL:", flow.start())
+code = input("Paste code: ").strip()
+result = flow.finish(code)
+print("DROPBOX_REFRESH_TOKEN =", result.refresh_token)
+```
+
+3. Add to your .env file:
+   DROPBOX_APP_KEY=your_app_key
+   DROPBOX_REFRESH_TOKEN=the_refresh_token_from_step_2
+
+4. Remove (or keep as backup): DROPBOX_TOKEN\
+"""
 
 
 def _load_cursor() -> Optional[str]:
@@ -280,6 +320,52 @@ def _analyze_file_with_vision(file_bytes: bytes, filename: str) -> dict:
 # Tool handlers
 # ---------------------------------------------------------------------------
 
+def _dropbox_auth_status(ctx: ToolContext) -> str:
+    """Check Dropbox authentication status and return a JSON status dict."""
+    refresh_token = os.environ.get("DROPBOX_REFRESH_TOKEN", "").strip()
+    app_key = os.environ.get("DROPBOX_APP_KEY", "").strip()
+    legacy_token = os.environ.get("DROPBOX_TOKEN", "").strip()
+
+    if refresh_token and app_key:
+        auth_method = "refresh_token"
+        configured = True
+    elif legacy_token:
+        auth_method = "legacy_token"
+        configured = True
+    else:
+        auth_method = "none"
+        configured = False
+
+    if not configured:
+        return json.dumps({
+            "configured": False,
+            "auth_method": "none",
+            "status": "not_configured",
+            "account_name": None,
+            "message": _AUTH_HELP_MESSAGE,
+        }, ensure_ascii=False)
+
+    try:
+        dbx = _get_dbx()
+        account = dbx.users_get_current_account()
+        return json.dumps({
+            "configured": True,
+            "auth_method": auth_method,
+            "status": "ok",
+            "account_name": account.name.display_name,
+            "message": "Dropbox authentication is working correctly.",
+        }, ensure_ascii=False)
+    except Exception as e:
+        status = "expired" if _is_auth_error(e) else "error"
+        return json.dumps({
+            "configured": configured,
+            "auth_method": auth_method,
+            "status": status,
+            "account_name": None,
+            "message": _AUTH_HELP_MESSAGE,
+        }, ensure_ascii=False)
+
+
 def _dropbox_list_files(ctx: ToolContext, folder_path: str = "/") -> str:
     """List files and folders in a Dropbox folder."""
     try:
@@ -313,6 +399,8 @@ def _dropbox_list_files(ctx: ToolContext, folder_path: str = "/") -> str:
         return json.dumps(items, ensure_ascii=False, indent=2)
     except Exception as e:
         log.warning("dropbox_list_files failed for '%s': %s", folder_path, e)
+        if _is_auth_error(e):
+            return _AUTH_HELP_MESSAGE
         return f"⚠️ Error listing Dropbox folder '{folder_path}': {e}"
 
 
@@ -343,6 +431,8 @@ def _dropbox_download_file(ctx: ToolContext, path: str) -> str:
         return json.dumps(out, ensure_ascii=False)
     except Exception as e:
         log.warning("dropbox_download_file failed for '%s': %s", path, e)
+        if _is_auth_error(e):
+            return _AUTH_HELP_MESSAGE
         return f"⚠️ Error downloading '{path}': {e}"
 
 
@@ -431,6 +521,8 @@ def _dropbox_index_folder(ctx: ToolContext, folder_path: str = _DROPBOX_FOLDER) 
 
     except Exception as e:
         log.warning("dropbox_index_folder failed: %s", e, exc_info=True)
+        if _is_auth_error(e):
+            return _AUTH_HELP_MESSAGE
         return f"⚠️ Error indexing folder '{folder_path}': {e}"
 
 
@@ -488,6 +580,8 @@ def _dropbox_search_document(ctx: ToolContext, query: str) -> str:
         file_bytes = dl_resp.content
     except Exception as e:
         log.warning("dropbox_search_document download failed for '%s': %s", doc["path"], e)
+        if _is_auth_error(e):
+            return _AUTH_HELP_MESSAGE
         return f"⚠️ Found '{doc['name']}' but download failed: {e}"
 
     # Emit event to send document via Telegram
@@ -665,6 +759,8 @@ def _dropbox_check_updates(ctx: ToolContext) -> str:
 
     except Exception as e:
         log.error("dropbox_check_updates failed: %s", e, exc_info=True)
+        if _is_auth_error(e):
+            return _AUTH_HELP_MESSAGE
         return json.dumps({"status": "error", "message": str(e)})
 
 
@@ -782,6 +878,20 @@ def get_tools() -> List[ToolEntry]:
             },
             handler=_dropbox_show_index,
             timeout_sec=10,
+        ),
+        ToolEntry(
+            name="dropbox_auth_status",
+            schema={
+                "name": "dropbox_auth_status",
+                "description": "Check Dropbox authentication status and get setup instructions if auth is broken",
+                "parameters": {
+                    "type": "object",
+                    "properties": {},
+                    "required": [],
+                },
+            },
+            handler=_dropbox_auth_status,
+            timeout_sec=15,
         ),
         ToolEntry(
             name="dropbox_check_updates",
