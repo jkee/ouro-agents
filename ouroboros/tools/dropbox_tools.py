@@ -89,6 +89,37 @@ def _parse_json_safe(content: str, fallback: dict) -> dict:
         return fallback
 
 
+def _build_index_entry(path: str, name: str, size: int, modified: str, analysis: dict) -> dict:
+    """Build a canonical index entry from Vision analysis result."""
+    kd = analysis.get("key_dates", {})
+    if not isinstance(kd, dict):
+        kd = {}
+    return {
+        "path": path,
+        "name": name,
+        "size": size,
+        "modified": modified,
+        "indexed_at": datetime.now(timezone.utc).isoformat(),
+        "type": analysis.get("type", "unknown"),
+        "type_en": analysis.get("type_en", ""),
+        "owner": analysis.get("owner"),
+        "person_names": analysis.get("person_names", []),
+        "description": analysis.get("description", name),
+        "document_number": analysis.get("document_number", ""),
+        "issuer": analysis.get("issuer", ""),
+        "country": analysis.get("country", ""),
+        "language": analysis.get("language", ""),
+        "key_dates": {
+            "issued": kd.get("issued", ""),
+            "expires": kd.get("expires", ""),
+            "birth": kd.get("birth", ""),
+            "other": kd.get("other", ""),
+        },
+        "tags": analysis.get("tags", []),
+        "ocr_raw": analysis.get("ocr_raw", ""),
+    }
+
+
 def _analyze_file_with_vision(file_bytes: bytes, filename: str) -> dict:
     """Use gpt-5.1 Vision to extract rich document metadata. Fallback on error."""
     empty_schema: dict = {
@@ -98,31 +129,7 @@ def _analyze_file_with_vision(file_bytes: bytes, filename: str) -> dict:
         "tags": [],
         "language": "",
     }
-    _VISION_PROMPT = (
-        "Проанализируй документ и извлеки данные в JSON.\n\n"
-        "ВАЖНО для российского паспорта — СТРОГИЙ ПОРЯДОК ПОЛЕЙ НА СТРАНИЦЕ:\n"
-        "  1. ФАМИЛИЯ — это САМОЕ ПЕРВОЕ слово/строка на странице, крупные заглавные кириллические буквы.\n"
-        "     Фамилия — это личное имя человека: ИВАНОВ, ПЕТРОВ, ТАРНАВСКИЙ, СИДОРОВА и т.п.\n"
-        "     Верни фамилию точно как напечатано, символ за символом.\n"
-        "  2. ИМЯ — второе слово/строка\n"
-        "  3. ОТЧЕСТВО — третье слово/строка\n"
-        "  4. ДАТА РОЖДЕНИЯ\n"
-        "  5. МЕСТО РОЖДЕНИЯ — идёт ПОСЛЕ даты рождения. Это ГОРОД или РЕГИОН:\n"
-        "     например 'Г. ОДЕССА', 'УКРАИНСКОЙ ССР', 'МОСКВА', 'КРАСНОДАРСКИЙ КРАЙ'.\n"
-        "     МЕСТО РОЖДЕНИЯ — это НЕ ФАМИЛИЯ!\n\n"
-        "  ЗАПРЕЩЕНО использовать как фамилию следующие слова и любые их формы:\n"
-        "  'УКРАИНСКОЙ', 'РОССИЙСКОЙ', 'СССР', 'ФЕДЕРАЦИИ', 'ССР', 'УКРАИНЫ',\n"
-        "  'РЕСПУБЛИКИ', 'СОВЕТСКОЙ' — это части места рождения или гражданства, НИКОГДА не фамилия.\n\n"
-        "Верни ТОЛЬКО валидный JSON:\n"
-        "{\n"
-        '  "type": "точный тип документа (паспорт РФ / СНИЛС / загранпаспорт / ОМС / ИНН / водительское удостоверение / свидетельство о рождении / другое)",\n'
-        '  "owner": "Фамилия Имя Отчество владельца (или null если не видно). ТОЛЬКО личная фамилия+имя+отчество. НЕ место рождения, НЕ гражданство.",\n'
-        '  "description": "подробное описание: тип, владелец (ФИО), серия/номер (последние цифры скрой звёздочками), дата выдачи, кем выдан, место рождения, срок действия если есть",\n'
-        '  "tags": ["тег1", "тег2", "tag_english"],\n'
-        '  "language": "ru/en/другой"\n'
-        "}\n"
-        "Номера документов — заменяй последние 2-4 цифры на ** для безопасности."
-    )
+    vision_prompt = _load_vision_prompt()
     try:
         import openai  # noqa: PLC0415
         api_key = os.environ.get("OPENAI_API_KEY", "")
@@ -199,7 +206,7 @@ def _analyze_file_with_vision(file_bytes: bytes, filename: str) -> dict:
                 "role": "user",
                 "content": [
                     {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}", "detail": "high"}},
-                    {"type": "text", "text": _VISION_PROMPT},
+                    {"type": "text", "text": vision_prompt},
                 ],
             }],
             response_format={"type": "json_object"},
@@ -335,36 +342,15 @@ def _dropbox_index_folder(ctx: ToolContext, folder_path: str = _DROPBOX_FOLDER) 
                 _, dl_resp = dbx.files_download(path)
                 file_bytes = dl_resp.content
                 analysis = _analyze_file_with_vision(file_bytes, entry.name)
-                new_index.append({
-                    "path": path,
-                    "name": entry.name,
-                    "size": entry.size,
-                    "modified": modified,
-                    "indexed_at": datetime.now(timezone.utc).isoformat(),
-                    "type": analysis.get("type", "unknown"),
-                    "owner": analysis.get("owner"),
-                    "description": analysis.get("description", entry.name),
-                    "tags": analysis.get("tags", []),
-                    "language": analysis.get("language", ""),
-                })
+                new_index.append(_build_index_entry(path, entry.name, entry.size, modified, analysis))
                 indexed_count += 1
                 log.info("Indexed: %s → %s", entry.name, analysis.get("type"))
             except Exception as idx_err:
                 log.error("Error indexing %s: %s", entry.name, idx_err)
                 errors.append(f"{entry.name}: {idx_err}")
-                # Add with basic metadata so the file appears in the index
-                new_index.append({
-                    "path": path,
-                    "name": entry.name,
-                    "size": entry.size,
-                    "modified": modified,
-                    "indexed_at": datetime.now(timezone.utc).isoformat(),
-                    "type": "unknown",
-                    "owner": None,
-                    "description": entry.name,
-                    "tags": [],
-                    "language": "",
-                })
+                entry_data = _build_index_entry(path, entry.name, entry.size, modified, {})
+                entry_data["error"] = str(idx_err)
+                new_index.append(entry_data)
 
         _save_index(new_index)
 
