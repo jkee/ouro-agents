@@ -149,7 +149,7 @@ def _analyze_file_with_vision(file_bytes: bytes, filename: str) -> dict:
                     '"tags": ["тег1", "тег2"], "language": "ru"}'
                 )
                 resp = client.chat.completions.create(
-                    model="gpt-4o-mini",
+                    model="gpt-5.1-mini",
                     messages=[{"role": "user", "content": fallback_prompt}],
                     response_format={"type": "json_object"},
                     max_completion_tokens=400,
@@ -164,7 +164,7 @@ def _analyze_file_with_vision(file_bytes: bytes, filename: str) -> dict:
             mime = ext_mime.get(ext, f"image/{ext.lstrip('.')}")
 
         resp = client.chat.completions.create(
-            model="gpt-5-mini",
+            model="gpt-5.1",
             messages=[{
                 "role": "user",
                 "content": [
@@ -173,7 +173,7 @@ def _analyze_file_with_vision(file_bytes: bytes, filename: str) -> dict:
                 ],
             }],
             response_format={"type": "json_object"},
-            max_completion_tokens=5000,
+            max_completion_tokens=1000,
         )
         return _parse_json_safe(resp.choices[0].message.content, empty_schema)
 
