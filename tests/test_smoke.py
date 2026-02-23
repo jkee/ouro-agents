@@ -43,6 +43,7 @@ TOOL_MODULES = [
     "ouroboros.tools.control",
     "ouroboros.tools.browser",
     "ouroboros.tools.review",
+    "ouroboros.tools.dropbox_tools",
 ]
 
 SUPERVISOR_MODULES = [
@@ -114,6 +115,13 @@ EXPECTED_TOOLS = [
     "compact_context",
     "list_available_tools",
     "enable_tools",
+    # Dropbox
+    "send_document",
+    "dropbox_list_files",
+    "dropbox_download_file",
+    "dropbox_index_folder",
+    "dropbox_search_document",
+    "dropbox_show_index",
 ]
 
 

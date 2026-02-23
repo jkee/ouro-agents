@@ -91,6 +91,26 @@ def _send_photo(ctx: ToolContext, image_base64: str, caption: str = "") -> str:
 
 
 # ---------------------------------------------------------------------------
+# Send document to owner
+# ---------------------------------------------------------------------------
+
+def _send_document(ctx: ToolContext, file_base64: str, filename: str, caption: str = "") -> str:
+    """Send a base64-encoded file to the owner's Telegram chat as a document."""
+    if not ctx.current_chat_id:
+        return "⚠️ No active chat — cannot send document."
+    if not file_base64 or len(file_base64) < 10:
+        return "⚠️ file_base64 is empty or too short."
+    ctx.pending_events.append({
+        "type": "send_document",
+        "chat_id": ctx.current_chat_id,
+        "file_base64": file_base64,
+        "filename": filename,
+        "caption": caption or "",
+    })
+    return f"OK: document '{filename}' queued for delivery to owner."
+
+
+# ---------------------------------------------------------------------------
 # Codebase digest
 # ---------------------------------------------------------------------------
 
@@ -373,6 +393,19 @@ def get_tools() -> List[ToolEntry]:
                 "caption": {"type": "string", "description": "Optional caption for the photo"},
             }, "required": ["image_base64"]},
         }, _send_photo),
+        ToolEntry("send_document", {
+            "name": "send_document",
+            "description": (
+                "Send a file/document to the owner's Telegram chat. "
+                "Use to deliver any file (PDF, image, etc.) by providing its base64-encoded content. "
+                "The file appears as a downloadable attachment in Telegram."
+            ),
+            "parameters": {"type": "object", "properties": {
+                "file_base64": {"type": "string", "description": "Base64-encoded file content"},
+                "filename": {"type": "string", "description": "Filename with extension (e.g. 'document.pdf')"},
+                "caption": {"type": "string", "description": "Optional caption for the document"},
+            }, "required": ["file_base64", "filename"]},
+        }, _send_document),
         ToolEntry("codebase_digest", {
             "name": "codebase_digest",
             "description": "Get a compact digest of the entire codebase: files, sizes, classes, functions. One call instead of many repo_read calls.",

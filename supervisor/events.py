@@ -396,6 +396,37 @@ def _handle_send_photo(evt: Dict[str, Any], ctx: Any) -> None:
         )
 
 
+def _handle_send_document(evt: Dict[str, Any], ctx: Any) -> None:
+    """Send a document file to a Telegram chat."""
+    import base64 as b64mod
+    try:
+        chat_id = int(evt.get("chat_id") or 0)
+        file_b64 = str(evt.get("file_base64") or "")
+        filename = str(evt.get("filename") or "document")
+        caption = str(evt.get("caption") or "")
+        if not chat_id or not file_b64:
+            return
+        file_bytes = b64mod.b64decode(file_b64)
+        ok, err = ctx.TG.send_document(chat_id, file_bytes, filename, caption=caption)
+        if not ok:
+            ctx.append_jsonl(
+                ctx.DRIVE_ROOT / "logs" / "supervisor.jsonl",
+                {
+                    "ts": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                    "type": "send_document_error",
+                    "chat_id": chat_id, "error": err,
+                },
+            )
+    except Exception as e:
+        ctx.append_jsonl(
+            ctx.DRIVE_ROOT / "logs" / "supervisor.jsonl",
+            {
+                "ts": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                "type": "send_document_event_error", "error": repr(e),
+            },
+        )
+
+
 def _handle_owner_message_injected(evt: Dict[str, Any], ctx: Any) -> None:
     """Log owner_message_injected to events.jsonl for health invariant #5 (duplicate processing)."""
     from ouroboros.utils import utc_now_iso
@@ -426,6 +457,7 @@ EVENT_HANDLERS = {
     "schedule_task": _handle_schedule_task,
     "cancel_task": _handle_cancel_task,
     "send_photo": _handle_send_photo,
+    "send_document": _handle_send_document,
     "toggle_evolution": _handle_toggle_evolution,
     "toggle_consciousness": _handle_toggle_consciousness,
     "owner_message_injected": _handle_owner_message_injected,
