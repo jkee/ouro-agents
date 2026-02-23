@@ -11,6 +11,7 @@ Ouroboros is a self-developing AI agent that rewrites its own code, improves its
 ```bash
 make test        # Run smoke tests (pytest, ~131 tests, fast, no external deps)
 make test-v      # Verbose test output
+make test-e2e    # E2E tests in Docker (requires API keys in .env, runs real LLM)
 make health      # Code complexity metrics
 make clean       # Clean __pycache__, .pyc, .pytest_cache
 
@@ -62,3 +63,4 @@ Three-layer design:
 | `supervisor/state.py` | Persistent state management |
 | `supervisor/workers.py` | Worker process lifecycle |
 | `launcher.py` | Main entry point (Docker VPS) |
+| `tests/e2e/harness.py` | E2E test harness (Docker-sandboxed, real LLM) |
