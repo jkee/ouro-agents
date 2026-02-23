@@ -216,11 +216,17 @@ if not _init_st.get("initialized"):
         import subprocess as _sp
         _sp.run(["git", "add", "ARCHITECTURE.md", "IMPROVE.md", "improvements-log/"],
                 cwd=str(REPO_DIR), timeout=10, check=True)
-        _sp.run(["git", "commit", "-m", "init: add ARCHITECTURE.md, IMPROVE.md, improvements-log"],
-                cwd=str(REPO_DIR), timeout=30, check=True)
-        _sp.run(["git", "push", "origin", BRANCH_DEV],
-                cwd=str(REPO_DIR), timeout=60, check=True)
-        log.info("First-run init files committed and pushed")
+        # Only commit if there are staged changes
+        _diff = _sp.run(["git", "diff", "--cached", "--quiet"],
+                        cwd=str(REPO_DIR), timeout=10)
+        if _diff.returncode != 0:
+            _sp.run(["git", "commit", "-m", "init: add ARCHITECTURE.md, IMPROVE.md, improvements-log"],
+                    cwd=str(REPO_DIR), timeout=30, check=True)
+            _sp.run(["git", "push", "origin", BRANCH_DEV],
+                    cwd=str(REPO_DIR), timeout=60, check=True)
+            log.info("First-run init files committed and pushed")
+        else:
+            log.info("First-run init files already present, nothing to commit")
     except Exception:
         log.warning("Failed to commit/push init files (will be picked up later)", exc_info=True)
     # Mark as initialized
