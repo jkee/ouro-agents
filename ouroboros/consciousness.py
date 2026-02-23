@@ -385,6 +385,8 @@ class BackgroundConsciousness:
         # Read-only tools for awareness
         "web_search", "repo_read", "repo_list", "drive_read", "drive_list",
         "chat_history",
+        # Document polling (Drop & Forget)
+        "dropbox_check_updates",
         # GitHub Issues
         "list_github_issues", "get_github_issue",
     })
