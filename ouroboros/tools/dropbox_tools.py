@@ -55,21 +55,36 @@ def _save_index(index: list) -> None:
 
 
 def _load_vision_prompt() -> str:
-    """Read VISION_PROMPT.md and extract the section starting with 'You are a document analysis expert.'"""
+    """Load the Vision analysis prompt from VISION_PROMPT.md.
+
+    The file has a Markdown header section separated from the actual prompt
+    by a ``---`` line.  Everything after the first ``---`` is returned as-is.
+    Falls back to a minimal schema-complete prompt if the file is missing.
+    """
     try:
         text = _VISION_PROMPT_PATH.read_text(encoding="utf-8")
-        marker = "You are a document analysis expert."
-        idx = text.find(marker)
-        if idx != -1:
-            return text[idx:]
-        return text
+        # Strip the header comment block (everything up to and including the
+        # first horizontal-rule separator line).
+        parts = text.split("\n---\n", 1)
+        if len(parts) == 2:
+            return parts[1].strip()
+        # No separator found — return the whole file (shouldn't happen in practice)
+        return text.strip()
     except FileNotFoundError:
+        log.warning(
+            "VISION_PROMPT.md not found at %s — using built-in fallback prompt",
+            _VISION_PROMPT_PATH,
+        )
         return (
-            "You are a document analysis expert. Analyze this document image and return ONLY valid JSON:\n"
-            '{"type": "document type", "type_ru": "тип на русском", "description": "brief description", '
-            '"person_names": [], "document_number": "", "issuer": "", '
-            '"key_dates": {"issued": "", "expires": "", "other": ""}, '
-            '"language": "ru/en/other", "country": "", "tags": []}'
+            "You are a document analysis expert. Analyze this document image and "
+            "return ONLY a valid JSON object (no markdown, no explanation):\n"
+            '{"type": "document type in Russian", "type_en": "document type in English", '
+            '"owner": "full name or null", "person_names": [], '
+            '"description": "brief description", '
+            '"document_number": "masked with **", "issuer": "", "country": "", '
+            '"language": "ru/en/other", '
+            '"key_dates": {"issued": "", "expires": "", "birth": "", "other": ""}, '
+            '"tags": [], "ocr_raw": ""}'
         )
 
 
