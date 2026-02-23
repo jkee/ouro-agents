@@ -99,15 +99,20 @@ def _analyze_file_with_vision(file_bytes: bytes, filename: str) -> dict:
         "language": "",
     }
     _VISION_PROMPT = (
-        "Проанализируй документ и извлеки следующие данные в JSON:\n"
+        "Проанализируй документ и извлеки данные в JSON.\n\n"
+        "ВАЖНО для российского паспорта: поля расположены так:\n"
+        "  Фамилия (первая строка) → Имя (вторая строка) → Отчество (третья строка) → Дата рождения → Пол → Место рождения → Гражданство\n"
+        "  'УКРАИНСКОЙ ССР', 'РОССИЙСКОЙ ФЕДЕРАЦИИ', 'СССР' и подобное — это ГРАЖДАНСТВО или МЕСТО РОЖДЕНИЯ, НЕ ФАМИЛИЯ.\n"
+        "  Фамилия и имя — это слова стоящие первыми, до даты рождения.\n\n"
+        "Верни ТОЛЬКО валидный JSON:\n"
         "{\n"
         '  "type": "точный тип документа (паспорт РФ / СНИЛС / загранпаспорт / ОМС / ИНН / водительское удостоверение / свидетельство о рождении / другое)",\n'
-        '  "owner": "ФИО владельца документа как указано в документе (или null если не видно)",\n'
-        '  "description": "подробное описание: тип, владелец, серия/номер (частично скрыт), дата выдачи, кем выдан, срок действия если есть",\n'
+        '  "owner": "Фамилия Имя Отчество владельца документа (или null если не видно). ТОЛЬКО ФИО, не гражданство и не место рождения.",\n'
+        '  "description": "подробное описание: тип, владелец (ФИО), серия/номер (последние цифры скрой звёздочками), дата выдачи, кем выдан, место рождения, срок действия если есть",\n'
         '  "tags": ["тег1", "тег2", "tag_english"],\n'
         '  "language": "ru/en/другой"\n'
         "}\n"
-        "Извлекай реальные данные из документа. Номера документов — частично скрывай последние цифры для безопасности."
+        "Номера документов — заменяй последние 2-4 цифры на ** для безопасности."
     )
     try:
         import openai  # noqa: PLC0415
@@ -144,7 +149,7 @@ def _analyze_file_with_vision(file_bytes: bytes, filename: str) -> dict:
                     '"tags": ["тег1", "тег2"], "language": "ru"}'
                 )
                 resp = client.chat.completions.create(
-                    model="gpt-4o",
+                    model="gpt-5-mini",
                     messages=[{"role": "user", "content": fallback_prompt}],
                     response_format={"type": "json_object"},
                     max_tokens=400,
@@ -159,7 +164,7 @@ def _analyze_file_with_vision(file_bytes: bytes, filename: str) -> dict:
             mime = ext_mime.get(ext, f"image/{ext.lstrip('.')}")
 
         resp = client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-5-mini",
             messages=[{
                 "role": "user",
                 "content": [
@@ -385,7 +390,7 @@ def _dropbox_search_document(ctx: ToolContext, query: str) -> str:
             "If multiple match, pick the most relevant. If not found, use found: false."
         )
         resp = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-5-mini",
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"},
             max_tokens=200,
