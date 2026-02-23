@@ -118,12 +118,14 @@ def _memo_search(ctx: ToolContext, query: str, limit: int = 5) -> str:
             score = item.get("score", None)
             meta = item.get("metadata", {})
             tags = meta.get("tags", []) if meta else []
+            full_id = item.get("id", "?")
 
-            line = f"{i}. {memory_text}"
-            if tags:
-                line += f" [tags: {', '.join(tags)}]"
-            if score is not None:
-                line += f" (relevance: {score:.2f})"
+            score_str = f"{score:.2f}" if score is not None else "n/a"
+            tags_str = ", ".join(tags) if tags else "—"
+            line = (
+                f"{i}. {memory_text}\n"
+                f"   ID: {full_id} | tags: {tags_str} | relevance: {score_str}"
+            )
             lines.append(line)
 
         return "📋 Found memories:\n" + "\n".join(lines)
@@ -162,13 +164,11 @@ def _memo_list(ctx: ToolContext, limit: int = 20) -> str:
             created = item.get("created_at", "")
             meta = item.get("metadata", {})
             tags = meta.get("tags", []) if meta else []
+            id_short = item.get("id", "?")[:8]
 
-            line = f"{i}. {memory_text}"
-            if tags:
-                line += f" [tags: {', '.join(tags)}]"
-            if created:
-                # Show only date part
-                line += f" ({created[:10]})"
+            date_str = created[:10] if created else "—"
+            tags_str = ", ".join(tags) if tags else "—"
+            line = f"{i}. [{id_short}] {memory_text} [tags: {tags_str}] ({date_str})"
             lines.append(line)
 
         total = len(items)
@@ -268,7 +268,7 @@ def get_tools() -> List[ToolEntry]:
                 "properties": {
                     "memory_id": {
                         "type": "string",
-                        "description": "The memory ID to delete (from memo_list or memo_search results)"
+                        "description": "The memory ID to delete (from memo_list output, shown as 8-char prefix like 'abc12345')"
                     }
                 },
                 "required": ["memory_id"]
