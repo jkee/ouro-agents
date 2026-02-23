@@ -22,7 +22,7 @@ from ouroboros.tools.registry import ToolContext, ToolEntry
 
 log = logging.getLogger(__name__)
 
-_DROPBOX_FOLDER = "/Ouroboros/docs"
+_DROPBOX_FOLDER = "/vityai/ouroboros/docs"
 _INDEX_PATH = Path("/data/docs_index.json")
 _TMP_DIR = Path("/data/tmp")
 _MAX_INLINE_BYTES = 5 * 1024 * 1024  # 5 MB
