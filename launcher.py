@@ -336,6 +336,29 @@ def reset_chat_agent():
     import supervisor.workers as _w
     _w._chat_agent = None
 
+
+def _transcribe_voice(file_bytes: bytes, filename: str) -> Optional[str]:
+    """Transcribe voice/audio using OpenAI Whisper API. Returns transcribed text or None."""
+    try:
+        import openai
+        import io
+        openai_key = os.environ.get("OPENAI_API_KEY", "")
+        if not openai_key:
+            log.warning("OPENAI_API_KEY not set, cannot transcribe voice")
+            return None
+        client = openai.OpenAI(api_key=openai_key)
+        audio_file = io.BytesIO(file_bytes)
+        audio_file.name = filename
+        transcript = client.audio.transcriptions.create(
+            model="whisper-1",
+            file=audio_file,
+            response_format="text"
+        )
+        return str(transcript).strip() if transcript else None
+    except Exception:
+        log.warning("Voice transcription failed", exc_info=True)
+        return None
+
 # ----------------------------
 # 7) Main loop
 # ----------------------------
@@ -591,6 +614,32 @@ while True:
                     b64, mime = TG.download_file_base64(file_id)
                     if b64:
                         image_data = (b64, mime, caption)
+        elif msg.get("voice"):
+            voice = msg["voice"]
+            file_id = voice.get("file_id")
+            if file_id:
+                file_bytes, file_path = TG.download_file_bytes(file_id)
+                if file_bytes:
+                    fname = file_path.rsplit("/", 1)[-1] if "/" in file_path else "voice.ogg"
+                    transcribed = _transcribe_voice(file_bytes, fname)
+                    if transcribed:
+                        voice_prefix = f"[Голосовое сообщение]: {transcribed}"
+                        text = (voice_prefix + "\n" + text).strip() if text else voice_prefix
+                    else:
+                        text = "[Голосовое сообщение — не удалось распознать]"
+        elif msg.get("audio"):
+            audio = msg["audio"]
+            file_id = audio.get("file_id")
+            if file_id:
+                file_bytes, file_path = TG.download_file_bytes(file_id)
+                if file_bytes:
+                    fname = file_path.rsplit("/", 1)[-1] if "/" in file_path else "audio.mp3"
+                    transcribed = _transcribe_voice(file_bytes, fname)
+                    if transcribed:
+                        audio_prefix = f"[Аудио]: {transcribed}"
+                        text = (audio_prefix + "\n" + text).strip() if text else audio_prefix
+                    else:
+                        text = "[Аудио — не удалось распознать]"
 
         st = load_state()
         if st.get("owner_id") is None:
