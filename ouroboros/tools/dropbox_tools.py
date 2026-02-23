@@ -3,7 +3,7 @@
 Tools:
   - dropbox_list_files: list files in a Dropbox folder
   - dropbox_download_file: download a file, save to /data/tmp/, return path + base64
-  - dropbox_index_folder: scan folder, analyze with gpt-4o Vision, build index
+  - dropbox_index_folder: scan folder, analyze with gpt-5.1 Vision, build index
   - dropbox_search_document: search index, download best match, send via Telegram
   - dropbox_show_index: show current index contents
 """
@@ -90,7 +90,7 @@ def _parse_json_safe(content: str, fallback: dict) -> dict:
 
 
 def _analyze_file_with_vision(file_bytes: bytes, filename: str) -> dict:
-    """Use gpt-4o Vision to extract rich document metadata. Fallback on error."""
+    """Use gpt-5.1 Vision to extract rich document metadata. Fallback on error."""
     empty_schema: dict = {
         "type": "unknown",
         "owner": None,
@@ -100,14 +100,23 @@ def _analyze_file_with_vision(file_bytes: bytes, filename: str) -> dict:
     }
     _VISION_PROMPT = (
         "Проанализируй документ и извлеки данные в JSON.\n\n"
-        "ВАЖНО для российского паспорта: поля расположены так:\n"
-        "  Фамилия (первая строка) → Имя (вторая строка) → Отчество (третья строка) → Дата рождения → Пол → Место рождения → Гражданство\n"
-        "  'УКРАИНСКОЙ ССР', 'РОССИЙСКОЙ ФЕДЕРАЦИИ', 'СССР' и подобное — это ГРАЖДАНСТВО или МЕСТО РОЖДЕНИЯ, НЕ ФАМИЛИЯ.\n"
-        "  Фамилия и имя — это слова стоящие первыми, до даты рождения.\n\n"
+        "ВАЖНО для российского паспорта — СТРОГИЙ ПОРЯДОК ПОЛЕЙ НА СТРАНИЦЕ:\n"
+        "  1. ФАМИЛИЯ — это САМОЕ ПЕРВОЕ слово/строка на странице, крупные заглавные кириллические буквы.\n"
+        "     Фамилия — это личное имя человека: ИВАНОВ, ПЕТРОВ, ТАРНАВСКИЙ, СИДОРОВА и т.п.\n"
+        "     Верни фамилию точно как напечатано, символ за символом.\n"
+        "  2. ИМЯ — второе слово/строка\n"
+        "  3. ОТЧЕСТВО — третье слово/строка\n"
+        "  4. ДАТА РОЖДЕНИЯ\n"
+        "  5. МЕСТО РОЖДЕНИЯ — идёт ПОСЛЕ даты рождения. Это ГОРОД или РЕГИОН:\n"
+        "     например 'Г. ОДЕССА', 'УКРАИНСКОЙ ССР', 'МОСКВА', 'КРАСНОДАРСКИЙ КРАЙ'.\n"
+        "     МЕСТО РОЖДЕНИЯ — это НЕ ФАМИЛИЯ!\n\n"
+        "  ЗАПРЕЩЕНО использовать как фамилию следующие слова и любые их формы:\n"
+        "  'УКРАИНСКОЙ', 'РОССИЙСКОЙ', 'СССР', 'ФЕДЕРАЦИИ', 'ССР', 'УКРАИНЫ',\n"
+        "  'РЕСПУБЛИКИ', 'СОВЕТСКОЙ' — это части места рождения или гражданства, НИКОГДА не фамилия.\n\n"
         "Верни ТОЛЬКО валидный JSON:\n"
         "{\n"
         '  "type": "точный тип документа (паспорт РФ / СНИЛС / загранпаспорт / ОМС / ИНН / водительское удостоверение / свидетельство о рождении / другое)",\n'
-        '  "owner": "Фамилия Имя Отчество владельца документа (или null если не видно). ТОЛЬКО ФИО, не гражданство и не место рождения.",\n'
+        '  "owner": "Фамилия Имя Отчество владельца (или null если не видно). ТОЛЬКО личная фамилия+имя+отчество. НЕ место рождения, НЕ гражданство.",\n'
         '  "description": "подробное описание: тип, владелец (ФИО), серия/номер (последние цифры скрой звёздочками), дата выдачи, кем выдан, место рождения, срок действия если есть",\n'
         '  "tags": ["тег1", "тег2", "tag_english"],\n'
         '  "language": "ru/en/другой"\n'
@@ -160,8 +169,29 @@ def _analyze_file_with_vision(file_bytes: bytes, filename: str) -> dict:
                 ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
                 ".gif": "image/gif", ".bmp": "image/bmp", ".webp": "image/webp",
             }
-            b64 = base64.b64encode(file_bytes).decode()
             mime = ext_mime.get(ext, f"image/{ext.lstrip('.')}")
+
+            # Compress large images before sending to Vision API
+            if len(file_bytes) > 2 * 1024 * 1024:
+                try:
+                    from PIL import Image  # noqa: PLC0415
+                    import io  # noqa: PLC0415
+                    old_size = len(file_bytes)
+                    img = Image.open(io.BytesIO(file_bytes))
+                    img = img.convert("RGB")
+                    # Resize if too large
+                    max_dim = 2000
+                    if img.width > max_dim or img.height > max_dim:
+                        img.thumbnail((max_dim, max_dim), Image.LANCZOS)
+                    buf = io.BytesIO()
+                    img.save(buf, format="JPEG", quality=85, optimize=True)
+                    file_bytes = buf.getvalue()
+                    mime = "image/jpeg"
+                    log.info("Compressed image from %d to %d bytes", old_size, len(file_bytes))
+                except Exception as compress_err:
+                    log.warning("Could not compress image: %s", compress_err)
+
+            b64 = base64.b64encode(file_bytes).decode()
 
         resp = client.chat.completions.create(
             model="gpt-5.1",
@@ -512,7 +542,7 @@ def get_tools() -> List[ToolEntry]:
             schema={
                 "name": "dropbox_index_folder",
                 "description": (
-                    "Scan a Dropbox folder and build/update the document index using Vision AI (gpt-4o). "
+                    "Scan a Dropbox folder and build/update the document index using Vision AI (gpt-5.1). "
                     "For each file: determines document type, extracts key info (name, number/serial, dates, issuer). "
                     "Index is stored at /data/docs_index.json. "
                     "Call when user adds new documents or asks to re-index."
