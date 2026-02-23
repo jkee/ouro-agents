@@ -447,7 +447,14 @@ def _dropbox_search_document(ctx: ToolContext, query: str) -> str:
 
     # Emit event to send document via Telegram
     file_b64 = base64.b64encode(file_bytes).decode()
-    caption = f"{doc['type']}: {doc['description']}"
+    _type_labels = {
+        "паспорт рф": "📄 Паспорт",
+        "снилс": "📄 СНИЛС",
+        "загранпаспорт": "📄 Загранпаспорт",
+        "водительское удостоверение": "🪪 Права",
+        "омс": "📄 Полис ОМС",
+    }
+    caption = _type_labels.get(doc["type"].lower(), "📄 Документ")
     ctx.pending_events.append({
         "type": "send_document",
         "chat_id": ctx.current_chat_id,
@@ -456,10 +463,7 @@ def _dropbox_search_document(ctx: ToolContext, query: str) -> str:
         "caption": caption,
     })
 
-    return (
-        f"OK: document '{doc['name']}' ({doc['type']}) queued for delivery.\n"
-        f"Reason: {match.get('reasoning', '')}"
-    )
+    return "sent"
 
 
 def _dropbox_show_index(ctx: ToolContext) -> str:
