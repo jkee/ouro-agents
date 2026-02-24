@@ -9,7 +9,7 @@ A self-developing AI agent that writes its own code, improves itself, and mainta
 
 A helpful AI with a constitution, background consciousness, and persistent identity across restarts.
 
-**Version:** 7.2.0 | [Landing Page](https://jkee.github.io/ouroboros/) | Originally developed at [joi-lab](https://github.com/joi-lab)
+**Version:** 7.3.0 | [Landing Page](https://jkee.github.io/ouroboros/) | Originally developed at [joi-lab](https://github.com/joi-lab)
 
 ---
 
@@ -221,6 +221,13 @@ Full text: [BIBLE.md](BIBLE.md)
 ---
 
 ## Changelog
+
+### v7.3.0 — Task Circuit Breaker
+- New: `circuit_breaker.py` — persistent registry tracking blocked background tasks
+- New tools: `task_block`, `task_unblock`, `task_check_blocked`
+- consciousness: `_maybe_poll_dropbox` now silently skips when circuit is open
+- CONSCIOUSNESS.md: added circuit breaker usage guide
+- Prevents infinite retry loops on externally-blocked tasks (Dropbox auth, etc.)
 
 ### v7.2.0 — Mem0 Personal Memory Subsystem
 - Integrated mem0ai + Chroma vector store for semantic personal memory

@@ -181,6 +181,8 @@ class BackgroundConsciousness:
 
     def _think(self) -> None:
         """One thinking cycle: build context, call LLM, execute tools iteratively."""
+        from ouroboros.tools import circuit_breaker
+        log.debug("Blocked tasks: %s", circuit_breaker.load_registry(self._drive_root))
         self._maybe_poll_dropbox()
         self._maybe_schedule_arch_review()
         context = self._build_context()
@@ -392,6 +394,8 @@ class BackgroundConsciousness:
         "dropbox_check_updates",
         # GitHub Issues
         "list_github_issues", "get_github_issue",
+        # Circuit breaker
+        "task_block", "task_unblock", "task_check_blocked",
     })
 
     def _build_registry(self) -> "ToolRegistry":
@@ -503,6 +507,11 @@ class BackgroundConsciousness:
         If new files are found, injects an observation so the LLM will
         notify the user via send_owner_message.
         """
+        from ouroboros.tools import circuit_breaker
+        blocked, _ = circuit_breaker.is_blocked(self._drive_root, "dropbox-polling")
+        if blocked:
+            return
+
         has_creds = (
             os.environ.get("DROPBOX_TOKEN") or
             os.environ.get("DROPBOX_REFRESH_TOKEN")
@@ -560,10 +569,17 @@ class BackgroundConsciousness:
                 self.inject_observation(observation)
 
         except Exception as e:
+            err_str = repr(e)
+            if "expired_access_token" in err_str or "invalid_access_token" in err_str:
+                circuit_breaker.block_task(
+                    self._drive_root,
+                    "dropbox-polling",
+                    "expired_access_token — waiting for DROPBOX_REFRESH_TOKEN from user",
+                )
             append_jsonl(self._drive_root / "logs" / "events.jsonl", {
                 "ts": utc_now_iso(),
                 "type": "dropbox_auto_poll_error",
-                "error": repr(e),
+                "error": err_str,
             })
 
     # -------------------------------------------------------------------

@@ -45,6 +45,7 @@ TOOL_MODULES = [
     "ouroboros.tools.review",
     "ouroboros.tools.dropbox_tools",
     "ouroboros.tools.memo",
+    "ouroboros.tools.circuit_breaker",
 ]
 
 SUPERVISOR_MODULES = [
@@ -130,6 +131,10 @@ EXPECTED_TOOLS = [
     "memo_search",
     "memo_list",
     "memo_delete",
+    # Circuit Breaker
+    "task_block",
+    "task_unblock",
+    "task_check_blocked",
 ]
 
 
