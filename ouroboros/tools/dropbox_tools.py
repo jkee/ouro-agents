@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
+from ouroboros.llm import LLMClient
 from ouroboros.tools.registry import ToolContext, ToolEntry
 
 log = logging.getLogger(__name__)
@@ -216,7 +217,7 @@ def _build_index_entry(path: str, name: str, size: int, modified: str, analysis:
 
 
 def _analyze_file_with_vision(file_bytes: bytes, filename: str) -> dict:
-    """Use gpt-5.1 Vision to extract rich document metadata. Fallback on error."""
+    """Use Gemini Vision to extract rich document metadata. Fallback on error."""
     empty_schema: dict = {
         "type": "unknown",
         "owner": None,
@@ -226,12 +227,7 @@ def _analyze_file_with_vision(file_bytes: bytes, filename: str) -> dict:
     }
     vision_prompt = _load_vision_prompt()
     try:
-        import openai  # noqa: PLC0415
-        api_key = os.environ.get("OPENAI_API_KEY", "")
-        if not api_key:
-            return empty_schema
-
-        client = openai.OpenAI(api_key=api_key)
+        llm = LLMClient()
         ext = Path(filename).suffix.lower()
 
         b64: str | None = None
@@ -259,13 +255,13 @@ def _analyze_file_with_vision(file_bytes: bytes, filename: str) -> dict:
                     '{"type": "тип документа", "owner": null, "description": "краткое описание", '
                     '"tags": ["тег1", "тег2"], "language": "ru"}'
                 )
-                resp = client.chat.completions.create(
-                    model="gpt-5.1-mini",
-                    messages=[{"role": "user", "content": fallback_prompt}],
-                    response_format={"type": "json_object"},
-                    max_completion_tokens=400,
+                text, _usage = llm.vision_query(
+                    prompt=fallback_prompt,
+                    images=[],
+                    model="google/gemini-2.0-flash",
+                    max_tokens=400,
                 )
-                return _parse_json_safe(resp.choices[0].message.content, empty_schema)
+                return _parse_json_safe(text, empty_schema)
         else:
             ext_mime = {
                 ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
@@ -295,19 +291,13 @@ def _analyze_file_with_vision(file_bytes: bytes, filename: str) -> dict:
 
             b64 = base64.b64encode(file_bytes).decode()
 
-        resp = client.chat.completions.create(
-            model="gpt-5.1",
-            messages=[{
-                "role": "user",
-                "content": [
-                    {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}", "detail": "high"}},
-                    {"type": "text", "text": vision_prompt},
-                ],
-            }],
-            response_format={"type": "json_object"},
-            max_completion_tokens=1000,
+        text, _usage = llm.vision_query(
+            prompt=vision_prompt,
+            images=[{"base64": b64, "mime": mime}],
+            model="google/gemini-2.0-flash",
+            max_tokens=1000,
         )
-        return _parse_json_safe(resp.choices[0].message.content, empty_schema)
+        return _parse_json_safe(text, empty_schema)
 
     except Exception as e:
         log.warning("Vision analysis failed for %s: %s", filename, e)
