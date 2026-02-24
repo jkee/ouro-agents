@@ -3,7 +3,7 @@
 Tools:
   - dropbox_list_files: list files in a Dropbox folder
   - dropbox_download_file: download a file, save to /data/tmp/, return path + base64
-  - dropbox_index_folder: scan folder, analyze with gpt-5.1 Vision, build index
+  - dropbox_index_folder: scan folder, analyze with Gemini Vision, build index
   - dropbox_search_document: search index, download best match, send via Telegram
   - dropbox_show_index: show current index contents
 """
@@ -523,14 +523,9 @@ def _dropbox_search_document(ctx: ToolContext, query: str) -> str:
     if not index:
         return "⚠️ Index is empty. Run dropbox_index_folder first to scan documents."
 
-    api_key = os.environ.get("OPENAI_API_KEY", "")
-    if not api_key:
-        return "⚠️ OPENAI_API_KEY not set — cannot perform semantic search."
-
     # Find best match via LLM
     try:
-        import openai  # noqa: PLC0415
-        client = openai.OpenAI(api_key=api_key)
+        llm = LLMClient()
 
         catalog = "\n".join([
             f"{i}. {item['type']} — владелец: {item.get('owner', '?')} — {item['description']}"
@@ -544,13 +539,13 @@ def _dropbox_search_document(ctx: ToolContext, query: str) -> str:
             "{\"found\": true/false, \"index\": <number or null>, \"reasoning\": \"brief reason\"}\n\n"
             "If multiple match, pick the most relevant. If not found, use found: false."
         )
-        resp = client.chat.completions.create(
-            model="gpt-5-mini",
+        response_msg, _usage = llm.chat(
             messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"},
-            max_completion_tokens=3000,
+            model="google/gemini-2.0-flash",
+            max_tokens=3000,
         )
-        match = _parse_json_safe(resp.choices[0].message.content, {"found": False, "index": None, "reasoning": "parse error"})
+        text = response_msg.get("content") or ""
+        match = _parse_json_safe(text, {"found": False, "index": None, "reasoning": "parse error"})
     except Exception as e:
         log.warning("dropbox_search_document LLM search failed: %s", e)
         return f"⚠️ Search failed: {e}"
@@ -807,7 +802,7 @@ def get_tools() -> List[ToolEntry]:
             schema={
                 "name": "dropbox_index_folder",
                 "description": (
-                    "Scan a Dropbox folder and build/update the document index using Vision AI (gpt-5.1). "
+                    "Scan a Dropbox folder and build/update the document index using Vision AI (Gemini Vision). "
                     "For each file: determines document type, extracts key info (name, number/serial, dates, issuer). "
                     "Index is stored at /data/docs_index.json. "
                     "Call when user adds new documents or asks to re-index."
