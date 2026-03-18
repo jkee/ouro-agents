@@ -65,6 +65,8 @@ Telegram --> launcher.py
 
 ## Launch Manual
 
+For detailed VPS sizing, resource tuning, and Claude Code deployment instructions, see **[INSTALL.md](INSTALL.md)**.
+
 Assumes you have a VPS (Ubuntu/Debian) with SSH access.
 
 ### Step 1: Get API Keys
