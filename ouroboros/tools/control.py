@@ -60,6 +60,17 @@ def _schedule_task(ctx: ToolContext, description: str, context: str = "", parent
         except Exception:
             pass
 
+    if getattr(ctx, 'is_consciousness', False):
+        from ouroboros.utils import append_jsonl
+        try:
+            append_jsonl(ctx.drive_logs() / "events.jsonl", {
+                "ts": utc_now_iso(),
+                "type": "consciousness_schedule_task",
+                "description": description[:200],
+            })
+        except Exception:
+            pass
+
     tid = uuid.uuid4().hex[:8]
     evt = {"type": "schedule_task", "description": description, "task_id": tid, "depth": new_depth, "ts": utc_now_iso()}
     if context:

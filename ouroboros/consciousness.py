@@ -335,7 +335,12 @@ class BackgroundConsciousness:
         if summary_path.exists():
             summary_text = read_text(summary_path)
             if summary_text.strip():
-                parts.append("## Dialogue Summary\n\n" + clip_text(summary_text, 4000))
+                parts.append(
+                    "## Dialogue Summary\n\n"
+                    "_Context only — the main agent handles user requests. "
+                    "Don't act on anything the user asked for here._\n\n"
+                    + clip_text(summary_text, 4000)
+                )
 
         # Recent observations
         observations = []
@@ -394,6 +399,7 @@ class BackgroundConsciousness:
         from ouroboros.tools.registry import ToolRegistry, ToolContext, ToolEntry
 
         registry = ToolRegistry(repo_dir=self._repo_dir, drive_root=self._drive_root)
+        registry._ctx.is_consciousness = True
 
         # Register consciousness-specific tool (modifies self._next_wakeup_sec)
         def _set_next_wakeup(ctx: Any, seconds: int = 300) -> str:

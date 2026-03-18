@@ -56,6 +56,9 @@ class ToolContext:
     # True when running inside handle_chat_direct (not a queued worker task)
     is_direct_chat: bool = False
 
+    # True when running inside background consciousness (not main agent)
+    is_consciousness: bool = False
+
     def repo_path(self, rel: str) -> pathlib.Path:
         return (self.repo_dir / safe_relpath(rel)).resolve()
 
