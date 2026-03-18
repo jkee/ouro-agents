@@ -117,6 +117,8 @@ EXPECTED_TOOLS = [
     "enable_tools",
     # Agent Skills
     "skill_list", "skill_activate", "skill_install", "skill_search",
+    # Composio
+    "composio_list_connections", "composio_get_oauth_url", "composio_run_action", "composio_request_app",
 ]
 
 

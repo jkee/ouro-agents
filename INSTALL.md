@@ -43,6 +43,7 @@ Before starting, you need:
 | `TELEGRAM_BOT_TOKEN` | [@BotFather](https://t.me/BotFather) on Telegram — `/newbot`, copy the token |
 | `GITHUB_TOKEN` | [github.com/settings/tokens](https://github.com/settings/personal-access-tokens/new) — fine-grained token with **Contents: Read and write** on your fork |
 | `ANTHROPIC_API_KEY` | [console.anthropic.com](https://console.anthropic.com/settings/keys) — powers Claude Code CLI (code editing path) |
+| `COMPOSIO_API_KEY` | [composio.dev](https://composio.dev) — external app integrations (Gmail, Slack, etc.) |
 
 ### Optional API Keys
 
@@ -92,6 +93,7 @@ GITHUB_TOKEN=github_pat_...
 GITHUB_USER=<your-github-username>
 GITHUB_REPO=ouroboros
 ANTHROPIC_API_KEY=sk-ant-...
+COMPOSIO_API_KEY=...
 ```
 
 See `.env.example` for optional model and infrastructure settings.

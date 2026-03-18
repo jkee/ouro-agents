@@ -53,6 +53,7 @@ GITHUB_TOKEN = get_secret("GITHUB_TOKEN", required=True)
 
 OPENAI_API_KEY = get_secret("OPENAI_API_KEY", default="")
 ANTHROPIC_API_KEY = get_secret("ANTHROPIC_API_KEY", required=True)
+COMPOSIO_API_KEY = get_secret("COMPOSIO_API_KEY", required=True)
 GITHUB_USER = get_cfg("GITHUB_USER")
 GITHUB_REPO = get_cfg("GITHUB_REPO")
 assert GITHUB_USER and str(GITHUB_USER).strip(), "GITHUB_USER not set. Add it to your .env file."

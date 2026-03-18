@@ -161,7 +161,7 @@ Background thinking daemon. Runs between tasks in a daemon thread.
 
 ## Layer 3 — Tools
 
-Plugin architecture with auto-discovery. ~53 tools across 16 modules.
+Plugin architecture with auto-discovery. ~57 tools across 17 modules.
 
 ### Plugin System
 
@@ -191,6 +191,7 @@ Create `ouroboros/tools/my_tool.py`, export `get_tools() -> List[ToolEntry]`. No
 | github.py | 266 | `list_github_issues`, `get_github_issue`, `comment_on_issue`, `close_github_issue`, `create_github_issue` |
 | git.py | 215 | `repo_commit_push`, `git_status`, `git_diff` |
 | vision.py | 193 | `analyze_screenshot`, `vlm_query` |
+| composio_tool.py | 165 | `composio_list_connections`, `composio_get_oauth_url`, `composio_run_action`, `composio_request_app` |
 | evolution_log.py | 159 | `log_evolution` |
 | tool_discovery.py | 103 | `list_available_tools`, `enable_tools` |
 | compact_context.py | 80 | `compact_context` |
@@ -206,6 +207,7 @@ Pre-packaged instruction sets in `.agents/skills/` (versioned in git, skills.sh 
 - **Progressive disclosure**: Tier 1 — name + description injected into LLM context. Tier 2 — full instructions loaded on `skill_activate`.
 - **Management tools**: `skill_list`, `skill_activate`, `skill_install`, `skill_search`.
 - **Pre-installed**: `find-skills` — discovers new skills from the skills.sh ecosystem.
+- **Composio skill**: instructions for connecting and using 250+ external apps via Composio OAuth.
 
 ---
 
@@ -356,7 +358,7 @@ Reference table for complexity tracking (BIBLE.md §8: keep under 2000 lines).
 | supervisor/events.py | ~486 | OK |
 | supervisor/git_ops.py | ~465 | OK |
 | supervisor/queue.py | ~421 | OK |
-| ouroboros/tools/ (16 modules) | ~4100 | OK (largest: evolution_stats.py 433) |
+| ouroboros/tools/ (17 modules) | ~4265 | OK (largest: evolution_stats.py 433) |
 | ouroboros/memory.py | ~269 | OK |
 | ouroboros/llm.py | ~290 | OK |
 | ouroboros/tools/registry.py | ~195 | OK |
@@ -365,7 +367,7 @@ Reference table for complexity tracking (BIBLE.md §8: keep under 2000 lines).
 
 ## Configuration
 
-**Required env vars**: `OPENROUTER_API_KEY`, `TELEGRAM_BOT_TOKEN`, `GITHUB_TOKEN`, `GITHUB_USER`, `GITHUB_REPO`, `ANTHROPIC_API_KEY`, `OUROBOROS_BRANCH_PREFIX`.
+**Required env vars**: `OPENROUTER_API_KEY`, `TELEGRAM_BOT_TOKEN`, `GITHUB_TOKEN`, `GITHUB_USER`, `GITHUB_REPO`, `ANTHROPIC_API_KEY`, `COMPOSIO_API_KEY`, `OUROBOROS_BRANCH_PREFIX`.
 
 **Optional tunables**:
 - `OUROBOROS_MAX_WORKERS` (default 5) — worker pool size.

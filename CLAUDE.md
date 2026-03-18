@@ -31,7 +31,7 @@ Three-layer design:
 
 **Layer 2 — Agent Core** (`ouroboros/`): Per-worker agent instance. `agent.py` orchestrates message->context->tools. `loop.py` is the core LLM tool execution loop. `llm.py` is the sole OpenRouter API client. `context.py` assembles LLM context. `memory.py` manages scratchpad, identity, user context, and chat history. `consciousness.py` runs background thinking between tasks.
 
-**Layer 3 — Tools** (`ouroboros/tools/`): Plugin registry with auto-discovery. Each module exports `get_tools()` returning `List[ToolEntry]`. `registry.py` is the SSOT — it collects all tools via `pkgutil.iter_modules()`. ~53 tools total. Every tool receives a `ToolContext` dataclass with repo dir, Drive root, task ID, event queue, browser state.
+**Layer 3 — Tools** (`ouroboros/tools/`): Plugin registry with auto-discovery. Each module exports `get_tools()` returning `List[ToolEntry]`. `registry.py` is the SSOT — it collects all tools via `pkgutil.iter_modules()`. ~57 tools total. Every tool receives a `ToolContext` dataclass with repo dir, Drive root, task ID, event queue, browser state.
 
 **Agent Skills** (`.agents/skills/`): Pre-packaged instruction sets in the open Agent Skills format (skills.sh). Stored in the repo, versioned in git. Progressive disclosure: Tier 1 catalog in LLM context, Tier 2 full instructions via `skill_activate`. The `find-skills` skill is pre-installed for discovering new skills.
 
@@ -48,12 +48,12 @@ Three-layer design:
 - **Agent Skills**: Pre-packaged instruction sets in `.agents/skills/` (skills.sh format). Install via `npx skills add`. Auto-discovered in LLM context.
 - **BIBLE.md is the protected core** (Bible section 17): Cannot be deleted, gutted, or replaced wholesale. Changes require user approval and MAJOR version bump.
 - **Self-improvements require user approval** unless `/no-approve` mode is active (Bible section 7).
-- **Post-implementation checklist**: After implementing a change: (1) review your own work for mistakes, (2) check and update all documentation (`CLAUDE.md`, `README.md`, `ARCHITECTURE.md`, `prompts/SYSTEM.md`) to reflect the change. Documentation is a single source of truth — it may not cover everything, but what it says must be accurate.
+- **Post-implementation checklist**: After implementing a change: (1) review your own work for mistakes, (2) check and update all documentation (`CLAUDE.md`, `README.md`, `ARCHITECTURE.md`, `IMPROVE.md`, `INSTALL.md`, `prompts/SYSTEM.md`, `.env.example`) to reflect the change. Documentation is a single source of truth — it may not cover everything, but what it says must be accurate.
 - **ARCHITECTURE.md consistency**: `ARCHITECTURE.md` is the agent's technical self-knowledge (BIBLE.md §8). Keep it consistent with the actual code — update module descriptions, line counts, tool lists, and data flows when making structural changes.
 
 ## Required Environment Variables
 
-`OPENROUTER_API_KEY`, `TELEGRAM_BOT_TOKEN`, `GITHUB_TOKEN`, `GITHUB_USER`, `GITHUB_REPO`, `ANTHROPIC_API_KEY`, `OUROBOROS_BRANCH_PREFIX`
+`OPENROUTER_API_KEY`, `TELEGRAM_BOT_TOKEN`, `GITHUB_TOKEN`, `GITHUB_USER`, `GITHUB_REPO`, `ANTHROPIC_API_KEY`, `COMPOSIO_API_KEY`, `OUROBOROS_BRANCH_PREFIX`
 
 ## Key Files
 

@@ -55,6 +55,7 @@ Telegram --> launcher.py
                 browser.py          -- Playwright (stealth)
                 review.py           -- multi-model review
                 skills.py           -- Agent Skills (skills.sh)
+                composio_tool.py    -- Composio (250+ external apps)
               llm.py                -- OpenRouter client
               memory.py             -- scratchpad, identity, chat
               review.py             -- code metrics
@@ -76,6 +77,7 @@ Assumes you have a VPS (Ubuntu/Debian) with SSH access.
 | `OPENROUTER_API_KEY` | Yes | [openrouter.ai/keys](https://openrouter.ai/keys) -- Create an account, add credits, generate a key |
 | `TELEGRAM_BOT_TOKEN` | Yes | Create a bot via [@BotFather](https://t.me/BotFather) on Telegram (`/newbot`), copy the token |
 | `GITHUB_TOKEN` | Yes | [github.com/settings/personal-access-tokens/new](https://github.com/settings/personal-access-tokens/new) -- Fine-grained token with **Contents: Read and write** on your fork |
+| `COMPOSIO_API_KEY` | Yes | [composio.dev](https://composio.dev) -- Composio API key for external app integrations (Gmail, Slack, etc.) |
 | `OPENAI_API_KEY` | No | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) -- Enables web search tool |
 | `ANTHROPIC_API_KEY` | Yes | [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys) -- Claude Code CLI (sole code editing path) |
 | `TOTAL_BUDGET` | No | Fallback spending limit in USD if OpenRouter key has no limit set |
