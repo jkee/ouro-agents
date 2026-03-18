@@ -42,13 +42,14 @@ Three-layer design:
 ## Key Conventions
 
 - **SSOT pattern**: state.py owns state, llm.py owns API calls, registry.py owns tools. No duplicate definitions.
-- **Minimalism (Bible section 8)**: Modules should fit in LLM context (~1000 lines). Methods >150 lines signal decomposition needed.
+- **Minimalism (Bible section 8)**: Modules should fit in LLM context (~2000 lines). Methods >150 lines signal decomposition needed.
 - **Versioning (Bible section 15)**: `VERSION` file == git tags == README changelog. Philosophy changes = MAJOR bump.
 - **Tool auto-discovery**: Add a new tool by creating `ouroboros/tools/new_tool.py` with a `get_tools()` function. No registration code needed.
 - **Agent Skills**: Pre-packaged instruction sets in `.agents/skills/` (skills.sh format). Install via `npx skills add`. Auto-discovered in LLM context.
 - **BIBLE.md is the protected core** (Bible section 17): Cannot be deleted, gutted, or replaced wholesale. Changes require user approval and MAJOR version bump.
 - **Self-improvements require user approval** unless `/no-approve` mode is active (Bible section 7).
-- **Post-implementation checklist**: After implementing a change: (1) review your own work for mistakes, (2) check and update all documentation (`CLAUDE.md`, `README.md`, `prompts/SYSTEM.md`) to reflect the change. Documentation is a single source of truth — it may not cover everything, but what it says must be accurate.
+- **Post-implementation checklist**: After implementing a change: (1) review your own work for mistakes, (2) check and update all documentation (`CLAUDE.md`, `README.md`, `ARCHITECTURE.md`, `prompts/SYSTEM.md`) to reflect the change. Documentation is a single source of truth — it may not cover everything, but what it says must be accurate.
+- **ARCHITECTURE.md consistency**: `ARCHITECTURE.md` is the agent's technical self-knowledge (BIBLE.md §8). Keep it consistent with the actual code — update module descriptions, line counts, tool lists, and data flows when making structural changes.
 
 ## Required Environment Variables
 
@@ -59,6 +60,8 @@ Three-layer design:
 | File | Role |
 |------|------|
 | `BIBLE.md` | Constitution (18 sections, Philosophy v4.0) |
+| `ARCHITECTURE.md` | Technical architecture (agent's self-knowledge, must stay consistent with code) |
+| `IMPROVE.md` | Self-improvement protocol and lessons learned (agent's playbook for evolution cycles) |
 | `prompts/SYSTEM.md` | Main system prompt |
 | `prompts/CONSCIOUSNESS.md` | Background consciousness prompt |
 | `ouroboros/loop.py` | Core LLM tool execution loop (largest module) |

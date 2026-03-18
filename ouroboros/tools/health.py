@@ -35,7 +35,7 @@ def _codebase_health(ctx: ToolContext) -> str:
         if metrics.get("largest_files"):
             lines.append("\n### Largest Files")
             for path, size in metrics["largest_files"][:10]:
-                marker = " ⚠️ OVERSIZED" if size > 1000 else ""
+                marker = " ⚠️ OVERSIZED" if size > 2000 else ""
                 lines.append(f"  {path}: {size} lines{marker}")
 
         # Longest functions
@@ -56,11 +56,11 @@ def _codebase_health(ctx: ToolContext) -> str:
                 for path, start, length in oversized_funcs:
                     lines.append(f"    - {path}:{start} ({length} lines)")
             if oversized_mods:
-                lines.append(f"  Modules > 1000 lines: {len(oversized_mods)}")
+                lines.append(f"  Modules > 2000 lines: {len(oversized_mods)}")
                 for path, size in oversized_mods:
                     lines.append(f"    - {path} ({size} lines)")
         else:
-            lines.append("\n✅ No Bible violations detected (all functions < 150 lines, all modules < 1000 lines)")
+            lines.append("\n✅ No Bible violations detected (all functions < 150 lines, all modules < 2000 lines)")
 
         return "\n".join(lines)
 

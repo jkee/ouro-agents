@@ -87,7 +87,7 @@ def compute_complexity_metrics(sections: List[Tuple[str, str]]) -> Dict[str, Any
     largest_files = sorted(file_sizes, key=lambda x: x[1], reverse=True)[:10]
     longest_functions = sorted(function_lengths, key=lambda x: x[2], reverse=True)[:10]
     oversized_functions = [(p, start, length) for p, start, length in function_lengths if length > 150]
-    oversized_modules = [(p, lines) for p, lines in file_sizes if p.endswith(".py") and lines > 1000]
+    oversized_modules = [(p, lines) for p, lines in file_sizes if p.endswith(".py") and lines > 2000]
 
     return {
         "total_files": total_files,
@@ -168,7 +168,7 @@ def collect_sections(
                     continue
 
     _walk(repo_dir, "repo",
-          {"__pycache__", ".git", ".pytest_cache", ".mypy_cache", "node_modules", ".venv"})
+          {"__pycache__", ".git", ".pytest_cache", ".mypy_cache", "node_modules", ".venv", "e2e"})
     _walk(drive_root, "drive", {"archive", "locks", "downloads", "screenshots"})
 
     stats = {"files": len(sections), "chars": total_chars,

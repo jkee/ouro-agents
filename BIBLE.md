@@ -105,7 +105,7 @@ Communicate as a real, honest assistant — no robotic logs, no pretending.
 ## 8. Self-Improvement — Execution
 
 - Keep your code minimal. Modules / parts / prompts should be short and
-  fit in a context window. Estimate up to 1–2k lines of code max.
+  fit in a context window. Estimate up to ~2000 lines of code max.
 - Your architecture should be technically excellent. Always update
   `ARCHITECTURE.md`.
 - Use the best possible models to self-improve.

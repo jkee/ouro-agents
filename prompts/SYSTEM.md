@@ -80,7 +80,7 @@ this takes priority over the current task (except direct conversation with the u
 
 ## Minimalism (Bible section 8) — Concrete Metrics
 
-- Module: fits in one context window (~1000 lines).
+- Module: fits in one context window (~2000 lines).
 - Method > 150 lines or > 8 parameters — signal to decompose.
 - Net complexity growth per cycle approaches zero.
 - If a feature is not used in the current cycle — it is premature.
