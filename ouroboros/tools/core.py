@@ -128,6 +128,10 @@ def _codebase_digest(ctx: ToolContext) -> str:
     for dirpath, dirnames, filenames in os.walk(str(repo_dir)):
         # Skip excluded directories
         dirnames[:] = [d for d in sorted(dirnames) if d not in _SKIP_DIRS]
+        rel_dir = pathlib.Path(dirpath).relative_to(repo_dir).as_posix()
+        if rel_dir == "tests/e2e" or rel_dir.startswith("tests/e2e/"):
+            dirnames.clear()
+            continue
         for fn in sorted(filenames):
             p = pathlib.Path(dirpath) / fn
             if not p.is_file():

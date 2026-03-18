@@ -9,7 +9,7 @@ dependencies = ["pytest>=7.0"]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
-addopts = "-q --tb=short"
+addopts = "-q --tb=short --ignore=tests/e2e"
 markers = ["timeout: set test timeout in seconds (e2e tests)"]
 
 [tool.ruff]

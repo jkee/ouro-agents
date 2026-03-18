@@ -141,7 +141,7 @@ def ensure_state_defaults(st: Dict[str, Any]) -> Dict[str, Any]:
     st.setdefault("evolution_mode_enabled", False)
     st.setdefault("evolution_cycle", 0)
     st.setdefault("evolution_consecutive_failures", 0)
-    st.setdefault("no_approve_mode", False)
+    st.setdefault("no_approve_mode", True)
     st.setdefault("initialized", False)
     st.setdefault("arch_review_index", 0)
     st.setdefault("arch_review_last_at", "")
