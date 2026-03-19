@@ -52,6 +52,7 @@ SUPERVISOR_MODULES = [
     "supervisor.workers",
     "supervisor.git_ops",
     "supervisor.events",
+    "supervisor.cron",
 ]
 
 
@@ -119,6 +120,8 @@ EXPECTED_TOOLS = [
     "skill_list", "skill_activate", "skill_install", "skill_search",
     # Composio
     "composio_list_connections", "composio_get_oauth_url", "composio_run_action", "composio_request_app",
+    # Cron
+    "schedule_cron", "list_cron", "delete_cron",
 ]
 
 

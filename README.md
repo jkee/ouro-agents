@@ -215,6 +215,8 @@ Full text: [BIBLE.md](BIBLE.md)
 
 ## Changelog
 
+- `v1.1.0` — 2026-03-19 — Recurring task scheduler (cron). New tools: `schedule_cron`, `list_cron`, `delete_cron`. Supports expressions like "every monday at 09:00", "daily at 08:00", "every 2 hours".
+
 ### v1.0.0 — 2026-03-19 — Initial Boot
 - First real deployment. System initialized from template.
 - Ouro becomes the author: identity.md, USER_CONTEXT.md, scratchpad initialized.

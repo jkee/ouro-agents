@@ -335,6 +335,34 @@ def reset_chat_agent():
     _w._chat_agent = None
 
 # ----------------------------
+# 6.4) Cron scheduler tick
+# ----------------------------
+from supervisor.cron import CronScheduler as _CronScheduler
+
+_cron_scheduler = _CronScheduler(DRIVE_ROOT)
+
+
+def _cron_tick_loop():
+    """Background thread: fire scheduled cron tasks."""
+    import time
+    while True:
+        time.sleep(60)  # check every minute
+        try:
+            fired = _cron_scheduler.tick(enqueue_fn=enqueue_task)
+            if fired > 0:
+                append_jsonl(DRIVE_ROOT / "logs" / "supervisor.jsonl", {
+                    "ts": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                    "type": "cron_fired",
+                    "count": fired,
+                })
+        except Exception:
+            log.warning("Cron tick error", exc_info=True)
+
+
+_cron_tick_thread = threading.Thread(target=_cron_tick_loop, daemon=True)
+_cron_tick_thread.start()
+
+# ----------------------------
 # 7) Main loop
 # ----------------------------
 import types
@@ -362,6 +390,7 @@ _event_ctx = types.SimpleNamespace(
     spawn_workers=spawn_workers,
     sort_pending=sort_pending,
     consciousness=_consciousness,
+    cron_scheduler=_cron_scheduler,
 )
 
 
