@@ -121,6 +121,47 @@ def _emit_usage(ctx: ToolContext, usage: Dict[str, Any], model: str) -> None:
         log.debug("Failed to emit VLM usage event", exc_info=True)
 
 
+_DEFAULT_IMAGE_MODEL = "black-forest-labs/flux.2-klein-4b"
+
+_IMAGE_MODELS = [
+    "black-forest-labs/flux.2-klein-4b",
+    "google/gemini-3.1-flash-image-preview",
+]
+
+
+def _generate_image(ctx: ToolContext, prompt: str, model: str = "", send_to_chat: bool = True) -> str:
+    """
+    Generate an image from a text prompt using OpenRouter image generation models.
+    Optionally sends the result to the owner's Telegram chat.
+    """
+    image_model = model if model else _DEFAULT_IMAGE_MODEL
+
+    try:
+        client = _get_llm_client()
+        image_b64, usage = client.generate_image(
+            prompt=prompt,
+            model=image_model,
+        )
+
+        _emit_usage(ctx, usage, image_model)
+
+        size_kb = len(image_b64) * 3 // 4 // 1024  # approximate decoded size
+
+        if send_to_chat and ctx.current_chat_id:
+            ctx.pending_events.append({
+                "type": "send_photo",
+                "chat_id": ctx.current_chat_id,
+                "image_base64": image_b64,
+                "caption": prompt[:200],
+            })
+            return f"OK: image generated ({size_kb} KB), sent to chat. Model: {image_model}"
+
+        return f"OK: image generated ({size_kb} KB). Model: {image_model}. Use send_photo to deliver it.\n[base64 length: {len(image_b64)}]"
+    except Exception as e:
+        log.warning("generate_image failed: %s", e, exc_info=True)
+        return f"⚠️ Image generation failed: {e}"
+
+
 def get_tools() -> List[ToolEntry]:
     return [
         ToolEntry(
@@ -189,5 +230,38 @@ def get_tools() -> List[ToolEntry]:
             },
             handler=_vlm_query,
             timeout_sec=30,
+        ),
+        ToolEntry(
+            name="generate_image",
+            schema={
+                "name": "generate_image",
+                "description": (
+                    "Generate an image from a text prompt. "
+                    "Uses OpenRouter image generation models (Flux, Gemini). "
+                    "By default sends the generated image to the owner's Telegram chat. "
+                    f"Available models: {', '.join(_IMAGE_MODELS)}."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "prompt": {
+                            "type": "string",
+                            "description": "Text description of the image to generate",
+                        },
+                        "model": {
+                            "type": "string",
+                            "description": f"Image generation model (default: {_DEFAULT_IMAGE_MODEL})",
+                            "enum": _IMAGE_MODELS,
+                        },
+                        "send_to_chat": {
+                            "type": "boolean",
+                            "description": "Send generated image to Telegram chat (default: true)",
+                        },
+                    },
+                    "required": ["prompt"],
+                },
+            },
+            handler=_generate_image,
+            timeout_sec=60,
         ),
     ]

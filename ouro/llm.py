@@ -364,6 +364,54 @@ class LLMClient:
         text = response_msg.get("content") or ""
         return text, usage
 
+    def generate_image(
+        self,
+        prompt: str,
+        model: str = "black-forest-labs/flux.2-klein-4b",
+        max_tokens: int = 1024,
+    ) -> Tuple[str, Dict[str, Any]]:
+        """
+        Generate an image via OpenRouter.
+
+        OpenRouter image generation requires modalities: ["image", "text"] in extra_body.
+        The image is returned in message.images[0] (base64), NOT in message.content.
+
+        Models: black-forest-labs/flux.2-klein-4b (fast/cheap),
+                google/gemini-3.1-flash-image-preview.
+
+        Returns:
+            (base64_image_string, usage_dict)
+        """
+        client = self._get_client()
+
+        kwargs: Dict[str, Any] = {
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": max_tokens,
+            "extra_body": {"modalities": ["image", "text"]},
+        }
+
+        resp = client.chat.completions.create(**kwargs)
+        resp_dict = resp.model_dump()
+        usage = resp_dict.get("usage") or {}
+        choices = resp_dict.get("choices") or [{}]
+        msg = (choices[0] if choices else {}).get("message") or {}
+
+        # OpenRouter returns images in message.images[] (non-standard)
+        images = msg.get("images") or []
+        if not images:
+            raise ValueError(f"No image returned by {model}. Response content: {msg.get('content', '')[:200]}")
+
+        # Ensure cost is present
+        if not usage.get("cost"):
+            gen_id = resp_dict.get("id") or ""
+            if gen_id:
+                cost = self._fetch_generation_cost(gen_id)
+                if cost is not None:
+                    usage["cost"] = cost
+
+        return images[0], usage
+
     def default_model(self) -> str:
         """Return the single default model from env. LLM switches via tool if needed."""
         return os.environ.get("OURO_MODEL", "anthropic/claude-sonnet-4.6")

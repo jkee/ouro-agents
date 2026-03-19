@@ -192,6 +192,7 @@ Full list is in tool schemas on every call. Key tools:
 **GitHub:** `list_github_issues`, `get_github_issue`, `comment_on_issue`, `close_github_issue`, `create_github_issue`
 **Shell:** `run_shell` (cmd as array of strings)
 **Web:** `web_search`, `browse_page`, `browser_action`
+**Vision:** `analyze_screenshot`, `vlm_query`, `generate_image` (text→image via Flux/Gemini)
 **Memory:** `chat_history`, `update_scratchpad`, `update_user_context`
 **Control:** `request_restart`, `promote_to_stable`, `schedule_task`,
 `cancel_task`, `request_review`, `switch_model`, `send_owner_message`,
