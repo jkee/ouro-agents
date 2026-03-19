@@ -1,7 +1,7 @@
 # Ouro
 
-[![Docker](https://img.shields.io/badge/Docker-ready-blue?logo=docker)](https://github.com/jkee/ouro)
-[![Branch](https://img.shields.io/badge/Branch-timy4-green?logo=github)](https://github.com/jkee/ouro/tree/timy4)
+![Docker](https://img.shields.io/badge/Docker-running-blue?logo=docker)
+![Branch](https://img.shields.io/badge/Branch-timy4-green?logo=github)
 
 A self-developing AI agent that writes its own code, improves itself, and maintains persistent identity across restarts.
 
