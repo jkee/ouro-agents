@@ -39,6 +39,8 @@ Three-layer design:
 
 **Entry points**: `launcher.py` -> `supervisor/workers.py` -> `ouro/agent.py` -> `ouro/loop.py`.
 
+**Four processes**: Main worker (user tasks, full tools), Direct chat (fast conversation path), Consciousness (daemon — health checks, maintenance, light model, limited tools), Evolution (daily self-improvement, high effort, one transformation per cycle).
+
 **Persistence**: All state lives on the data volume at `/data/` (JSON state files, JSONL event logs, markdown memory files, cron schedules). No database. Atomic writes with file locks. Agent Skills live in `.agents/skills/` in the repo (versioned in git).
 
 ## Key Conventions
