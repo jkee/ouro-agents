@@ -34,7 +34,7 @@ Four execution contexts, each with a distinct role:
 |---------|------|-------|--------|-------|---------|
 | **Main worker** | Handle user tasks, reviews, scheduled work | Main (Sonnet) | SYSTEM.md | All ~57 | Task queue |
 | **Direct chat** | Immediate conversational response | Main (Sonnet) | SYSTEM.md | All ~57 | Telegram message when idle |
-| **Consciousness** | System caretaker — health checks, routine maintenance, gentle reflection | Light (Haiku) | CONSCIOUSNESS.md | 18 whitelisted (read-only + memory) | Periodic wakeup (default 5 min) |
+| **Consciousness** | System caretaker — health checks, routine maintenance, gentle reflection | Light (`OURO_MODEL_LIGHT`) | CONSCIOUSNESS.md | 18 whitelisted (read-only + memory) | Periodic wakeup (default 5 min) |
 | **Evolution** | Daily self-improvement — find leverage, implement one meaningful change | Main (Sonnet), high effort | SYSTEM.md | All ~57 | Once per day (when queue empty) |
 
 **Main worker** — the workhorse. Handles everything the user asks for: tasks, code edits, reviews, subtasks. Up to `MAX_WORKERS` (5) parallel processes. Medium reasoning effort for regular tasks, high for reviews.
@@ -170,8 +170,10 @@ Builds the full LLM message array for each round.
 
 | Process | Prompt | Key context |
 |---------|--------|-------------|
-| Main agent (tasks, evolution, user messages) | `prompts/SYSTEM.md` | BIBLE.md, identity, scratchpad, USER_CONTEXT, dialogue summary, evolution log, skills catalog, chat/progress/events, health invariants |
-| Background consciousness | `prompts/CONSCIOUSNESS.md` | BIBLE.md (clipped), identity, scratchpad, USER_CONTEXT, dialogue summary, observations, runtime |
+| Main worker (task/user) | `prompts/SYSTEM.md` | BIBLE.md, identity, scratchpad, USER_CONTEXT, dialogue summary, evolution log, skills catalog, chat/progress/events, health invariants |
+| Direct chat | `prompts/SYSTEM.md` | Same as main worker, no queue delay |
+| Evolution | `prompts/SYSTEM.md` | Same as main worker + README.md, high reasoning effort |
+| Consciousness | `prompts/CONSCIOUSNESS.md` | BIBLE.md (clipped), identity, scratchpad, USER_CONTEXT, dialogue summary, observations, runtime |
 
 - **Token budgeting**: clips context sections to keep total within ~100k tokens.
 - **Context compaction**: `compact_tool_history()` trims old tool results when approaching limits.
