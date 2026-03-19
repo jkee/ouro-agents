@@ -417,7 +417,11 @@ class LLMClient:
         return os.environ.get("OURO_MODEL", "anthropic/claude-sonnet-4.6")
 
     def available_models(self) -> List[str]:
-        """Return list of available models from env (for switch_model tool schema)."""
+        """Return configured models as suggestions for switch_model tool.
+
+        These are not an exhaustive list — any valid OpenRouter model ID (containing '/')
+        is accepted by switch_model. These are just the env-configured defaults.
+        """
         main = os.environ.get("OURO_MODEL", "anthropic/claude-sonnet-4.6")
         code = os.environ.get("OURO_MODEL_CODE", "")
         light = os.environ.get("OURO_MODEL_LIGHT", "")

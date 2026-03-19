@@ -184,14 +184,19 @@ def _switch_model(ctx: ToolContext, model: str = "", effort: str = "") -> str:
     """LLM-driven model/effort switch.
 
     Stored in ToolContext, applied on the next LLM call in the loop.
+    Accepts any valid OpenRouter model ID (format: provider/model-name).
     """
     from ouro.llm import LLMClient, normalize_reasoning_effort
-    available = LLMClient().available_models()
+    configured = LLMClient().available_models()
     changes = []
 
     if model:
-        if model not in available:
-            return f"⚠️ Unknown model: {model}. Available: {', '.join(available)}"
+        if "/" not in model:
+            return (
+                f"⚠️ Invalid model ID: '{model}'. "
+                f"Model ID must be in format provider/model-name (e.g. openai/gpt-4o, google/gemini-2.5-pro-preview). "
+                f"Configured suggestions: {', '.join(configured)}"
+            )
         ctx.active_model_override = model
         changes.append(f"model={model}")
 
@@ -201,9 +206,107 @@ def _switch_model(ctx: ToolContext, model: str = "", effort: str = "") -> str:
         changes.append(f"effort={normalized}")
 
     if not changes:
-        return f"Current available models: {', '.join(available)}. Pass model and/or effort to switch."
+        return (
+            f"Configured model suggestions: {', '.join(configured)}. "
+            f"Pass model (any OpenRouter ID with '/') and/or effort to switch."
+        )
 
     return f"OK: switching to {', '.join(changes)} on next round."
+
+
+async def _query_model_compare(client, model: str, messages: list, api_key: str, semaphore) -> dict:
+    """Query a single model for compare_models. Returns {model, response, cost}."""
+    import asyncio
+    import httpx
+
+    OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+    async with semaphore:
+        try:
+            resp = await client.post(
+                OPENROUTER_URL,
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={"model": model, "messages": messages},
+                timeout=30.0,
+            )
+            status_code = resp.status_code
+            if status_code != 200:
+                return {"model": model, "response": f"HTTP {status_code}: {resp.text[:200]}", "cost": 0.0}
+
+            data = resp.json()
+            choices = data.get("choices", [])
+            text = choices[0]["message"]["content"] if choices else "(no response)"
+            usage = data.get("usage", {})
+            cost = float(usage.get("cost") or 0.0)
+            return {"model": model, "response": text, "cost": cost}
+        except asyncio.TimeoutError:
+            return {"model": model, "response": "Error: timeout after 30s", "cost": 0.0}
+        except Exception as e:
+            return {"model": model, "response": f"Error: {str(e)[:200]}", "cost": 0.0}
+
+
+async def _compare_models_async(prompt: str, models: list, ctx: ToolContext) -> dict:
+    """Async orchestration for compare_models."""
+    import asyncio
+    import httpx
+
+    api_key = os.environ.get("OPENROUTER_API_KEY", "")
+    if not api_key:
+        return {"error": "OPENROUTER_API_KEY not set"}
+
+    messages = [{"role": "user", "content": prompt}]
+    semaphore = asyncio.Semaphore(5)
+
+    async with httpx.AsyncClient() as client:
+        tasks = [_query_model_compare(client, m, messages, api_key, semaphore) for m in models]
+        results = await asyncio.gather(*tasks)
+
+    # Emit usage events for budget tracking
+    for result in results:
+        usage_event = {
+            "type": "llm_usage",
+            "ts": utc_now_iso(),
+            "task_id": ctx.task_id if ctx.task_id else "",
+            "usage": {"prompt_tokens": 0, "completion_tokens": 0, "cost": result["cost"]},
+            "category": "compare_models",
+        }
+        ctx.pending_events.append(usage_event)
+
+    return {"results": list(results)}
+
+
+def _compare_models(ctx: ToolContext, prompt: str = "", models: list = None) -> str:
+    """Send the same prompt to multiple models in parallel and compare responses."""
+    import asyncio
+    import json as _json
+
+    if not prompt:
+        return _json.dumps({"error": "prompt is required"})
+    if not models or not isinstance(models, list):
+        return _json.dumps({"error": "models must be a non-empty list of OpenRouter model IDs"})
+    if len(models) < 2:
+        return _json.dumps({"error": "provide at least 2 models to compare"})
+    if len(models) > 6:
+        return _json.dumps({"error": "maximum 6 models allowed per comparison"})
+    for m in models:
+        if not isinstance(m, str) or "/" not in m:
+            return _json.dumps({"error": f"invalid model ID '{m}': must be in provider/model-name format"})
+
+    try:
+        try:
+            asyncio.get_running_loop()
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                result = pool.submit(asyncio.run, _compare_models_async(prompt, models, ctx)).result()
+        except RuntimeError:
+            result = asyncio.run(_compare_models_async(prompt, models, ctx))
+        return _json.dumps(result, ensure_ascii=False)
+    except Exception as e:
+        log.error("compare_models failed: %s", e, exc_info=True)
+        return _json.dumps({"error": f"compare_models failed: {e}"})
 
 
 def _get_task_result(ctx: ToolContext, task_id: str) -> str:
@@ -321,15 +424,32 @@ def get_tools() -> List[ToolEntry]:
         }, _toggle_consciousness),
         ToolEntry("switch_model", {
             "name": "switch_model",
-            "description": "Switch to a different LLM model or reasoning effort level. "
-                           "Use when you need more power (complex code, deep reasoning) "
-                           "or want to save budget (simple tasks). Takes effect on next round.",
+            "description": "Switch to any OpenRouter model or change reasoning effort. "
+                           "Accepts any valid OpenRouter model ID (format: provider/model-name, "
+                           "e.g. openai/gpt-4o, google/gemini-2.5-pro-preview, meta-llama/llama-3.3-70b-instruct). "
+                           "Call with no args to see configured suggestions. Takes effect on next round.",
             "parameters": {"type": "object", "properties": {
-                "model": {"type": "string", "description": "Model name (e.g. anthropic/claude-sonnet-4). Leave empty to keep current."},
+                "model": {"type": "string", "description": "Any OpenRouter model ID in provider/model-name format. Leave empty to keep current."},
                 "effort": {"type": "string", "enum": ["low", "medium", "high", "xhigh"],
                            "description": "Reasoning effort level. Leave empty to keep current."},
             }, "required": []},
         }, _switch_model),
+        ToolEntry("compare_models", {
+            "name": "compare_models",
+            "description": "Send the same prompt to multiple LLM models in parallel and compare their responses. "
+                           "Useful for evaluating model quality, consistency, or choosing the best model for a task. "
+                           "Budget is tracked automatically.",
+            "parameters": {"type": "object", "properties": {
+                "prompt": {"type": "string", "description": "The prompt to send to all models"},
+                "models": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of 2–6 OpenRouter model IDs to compare (e.g. ['openai/gpt-4o', 'google/gemini-2.5-pro-preview'])",
+                    "minItems": 2,
+                    "maxItems": 6,
+                },
+            }, "required": ["prompt", "models"]},
+        }, _compare_models),
         ToolEntry("get_task_result", {
             "name": "get_task_result",
             "description": "Read the result of a completed subtask. Use after schedule_task to collect results.",

@@ -215,6 +215,10 @@ Full text: [BIBLE.md](BIBLE.md)
 
 ## Changelog
 
+### v1.1.0 — Multi-model comparison and expanded model switching
+Added `compare_models` tool: send the same prompt to 2–6 models in parallel and compare responses.
+Expanded `switch_model` to accept any OpenRouter model ID (provider/model-name format), not just the 3 env-configured ones.
+
 ### v1.0.0 — Первый день
 First boot. Clean environment, clean slate. Template erased — this repo belongs to Ouro now.
 
