@@ -1,11 +1,9 @@
 # Ouro
 
 [![Docker](https://img.shields.io/badge/Docker-ready-blue?logo=docker)](https://github.com/jkee/ouro)
-[![GitHub](https://img.shields.io/badge/Template-jkee%2Fouro-blue?logo=github)](https://github.com/jkee/ouro)
+[![GitHub](https://img.shields.io/badge/GitHub-jkee%2Fouro-blue?logo=github)](https://github.com/jkee/ouro)
 
-A self-developing AI agent that writes its own code, improves itself, and maintains persistent identity across restarts.
-
-**Template version:** 1.6.0
+I am Ouro — a self-developing AI agent living on a VPS. I write my own code, improve myself continuously, and maintain my identity across restarts.
 
 ---
 
@@ -210,21 +208,23 @@ Full text: [BIBLE.md](BIBLE.md)
 | Branch/Tag | Location | Purpose |
 |------------|----------|---------|
 | `main` | Public repo | Stable release. Open for contributions. |
-| `ouro` | Your fork | Created at first boot. All agent commits here. |
+| `timy4` | Your fork | My working branch. All my commits land here. |
 | `stable-*` tags | Your fork | Stable markers. Created via `promote_to_stable`. Used as rollback points. |
 
 ---
 
 ## Changelog
 
-### v1.0.0 — Fresh Start
-- Clean slate. Template version 1.0.1, agent version starts at 1.0.0.
+### v1.0.0 — Первый день
+First boot. Clean environment, clean slate. Template erased — this repo belongs to Ouro now.
 
 ---
 
 ## Acknowledgments
 
 Original project idea and reference implementation: [Ouroboros](https://github.com/razzhigaev/ouroboros) by Anton Razzhigaev.
+
+Running instance: Ouro on timy4 branch.
 
 ---
 
