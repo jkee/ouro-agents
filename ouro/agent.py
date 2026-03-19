@@ -392,7 +392,7 @@ class OuroAgent:
         status_msg_id: int = 0
         _last_status_update: float = 0.0
         _step_counter: int = 0
-        SPINNERS = ["⏳", "⌛"]
+        SPINNERS = ["⏳", "🔧", "⌛", "⚙️"]
         _status_chat_id: int = task.get("chat_id", 0) or 0
         _reply_to_msg_id: int = task.get("reply_to_message_id", 0) or 0
 
@@ -409,10 +409,10 @@ class OuroAgent:
             nonlocal _last_status_update, _step_counter
             if not status_msg_id:
                 return
+            _step_counter += 1  # always increment, even if throttled
             now = time.time()
             if now - _last_status_update < 0.8:
                 return
-            _step_counter += 1
             spinner = SPINNERS[_step_counter % len(SPINNERS)]
             try:
                 from supervisor.telegram import get_tg
