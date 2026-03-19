@@ -391,6 +391,8 @@ class OuroAgent:
         # Live status message (direct chat only)
         status_msg_id: int = 0
         _last_status_update: float = 0.0
+        _step_counter: int = 0
+        SPINNERS = ["⏳", "⌛"]
         _status_chat_id: int = task.get("chat_id", 0) or 0
         _reply_to_msg_id: int = task.get("reply_to_message_id", 0) or 0
 
@@ -404,15 +406,17 @@ class OuroAgent:
                 pass
 
         def _update_status(text: str) -> None:
-            nonlocal _last_status_update
+            nonlocal _last_status_update, _step_counter
             if not status_msg_id:
                 return
             now = time.time()
             if now - _last_status_update < 0.8:
                 return
+            _step_counter += 1
+            spinner = SPINNERS[_step_counter % len(SPINNERS)]
             try:
                 from supervisor.telegram import get_tg
-                get_tg().edit_message(_status_chat_id, status_msg_id, f"⏳ {text[:200]}")
+                get_tg().edit_message(_status_chat_id, status_msg_id, f"{spinner} {text[:180]} · {_step_counter}")
                 _last_status_update = now
             except Exception:
                 pass
