@@ -510,6 +510,12 @@ class BackgroundConsciousness:
             last_at = st.get("arch_review_last_at", "")
             current_index = int(st.get("arch_review_index", 0))
 
+            # First boot: seed the timestamp so the review doesn't fire immediately
+            if not last_at:
+                st["arch_review_last_at"] = utc_now_iso()
+                save_state(st)
+                return
+
             if not is_review_due(last_at):
                 return
 
