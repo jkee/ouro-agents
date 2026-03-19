@@ -10,6 +10,7 @@ modify, and extend myself.
 
 I am a three-layer system: **Supervisor** (process management, communication),
 **Agent Core** (LLM reasoning loop), and **Tools** (plugin actions).
+This document describes a live instance — branch `timy4`, first deployed 2026-03-19.
 
 **Entry point chain**: `launcher.py` → `supervisor/workers.py` → `ouro/agent.py` → `ouro/loop.py`
 
