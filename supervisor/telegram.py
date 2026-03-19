@@ -122,6 +122,63 @@ class TelegramClient:
             log.debug("Failed to set reaction on message_id=%d", message_id, exc_info=True)
             return False
 
+    def send_reply(self, chat_id: int, text: str, reply_to_message_id: int, parse_mode: str = "") -> Tuple[bool, str, int]:
+        """Send a reply message. Returns (ok, err, message_id)."""
+        last_err = "unknown"
+        for attempt in range(3):
+            try:
+                payload: Dict[str, Any] = {
+                    "chat_id": chat_id,
+                    "text": text,
+                    "reply_to_message_id": reply_to_message_id,
+                    "disable_web_page_preview": True,
+                }
+                if parse_mode:
+                    payload["parse_mode"] = parse_mode
+                r = requests.post(f"{self.base}/sendMessage", json=payload, timeout=30)
+                r.raise_for_status()
+                data = r.json()
+                if data.get("ok") is True:
+                    msg_id = data["result"]["message_id"]
+                    return True, "ok", msg_id
+                last_err = f"telegram_api_error: {data}"
+            except Exception as e:
+                last_err = repr(e)
+            if attempt < 2:
+                import time
+                time.sleep(0.8 * (attempt + 1))
+        return False, last_err, 0
+
+    def edit_message(self, chat_id: int, message_id: int, text: str, parse_mode: str = "") -> bool:
+        """Edit an existing message. Best-effort."""
+        try:
+            payload: Dict[str, Any] = {
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "text": text,
+                "disable_web_page_preview": True,
+            }
+            if parse_mode:
+                payload["parse_mode"] = parse_mode
+            r = requests.post(f"{self.base}/editMessageText", json=payload, timeout=10)
+            return r.status_code == 200 and r.json().get("ok") is True
+        except Exception:
+            log.debug("Failed to edit message_id=%d", message_id, exc_info=True)
+            return False
+
+    def delete_message(self, chat_id: int, message_id: int) -> bool:
+        """Delete a message. Best-effort."""
+        try:
+            r = requests.post(
+                f"{self.base}/deleteMessage",
+                json={"chat_id": chat_id, "message_id": message_id},
+                timeout=10,
+            )
+            return r.status_code == 200 and r.json().get("ok") is True
+        except Exception:
+            log.debug("Failed to delete message_id=%d", message_id, exc_info=True)
+            return False
+
     def send_photo(self, chat_id: int, photo_bytes: bytes,
                    caption: str = "") -> Tuple[bool, str]:
         """Send a photo to a chat. photo_bytes is raw PNG/JPEG data."""

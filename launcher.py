@@ -774,14 +774,15 @@ while True:
             else:
                 # Dispatch to direct chat handler
                 _consciousness.pause()
-                def _run_task_and_resume(cid, txt, img):
+                _trigger_msg_id = msg.get("message_id", 0)
+                def _run_task_and_resume(cid, txt, img, trigger_mid):
                     try:
-                        handle_chat_direct(cid, txt, img)
+                        handle_chat_direct(cid, txt, img, reply_to_message_id=trigger_mid)
                     finally:
                         _consciousness.resume()
                 _t = threading.Thread(
                     target=_run_task_and_resume,
-                    args=(chat_id, final_text, _batched_image),
+                    args=(chat_id, final_text, _batched_image, _trigger_msg_id),
                     daemon=True,
                 )
                 try:

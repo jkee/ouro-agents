@@ -388,6 +388,37 @@ class OuroAgent:
         drive_logs = self.env.drive_path("logs")
         heartbeat_stop = self._start_task_heartbeat_loop(str(task.get("id") or ""))
 
+        # Live status message (direct chat only)
+        status_msg_id: int = 0
+        _last_status_update: float = 0.0
+        _status_chat_id: int = task.get("chat_id", 0) or 0
+        _reply_to_msg_id: int = task.get("reply_to_message_id", 0) or 0
+
+        if _reply_to_msg_id and _status_chat_id and task.get("_is_direct_chat"):
+            try:
+                from supervisor.telegram import get_tg
+                ok, _, smid = get_tg().send_reply(_status_chat_id, "⏳ Думаю...", _reply_to_msg_id)
+                if ok:
+                    status_msg_id = smid
+            except Exception:
+                pass
+
+        def _update_status(text: str) -> None:
+            nonlocal _last_status_update
+            if not status_msg_id:
+                return
+            now = time.time()
+            if now - _last_status_update < 3.0:
+                return
+            try:
+                from supervisor.telegram import get_tg
+                get_tg().edit_message(_status_chat_id, status_msg_id, f"⏳ {text[:200]}")
+                _last_status_update = now
+            except Exception:
+                pass
+
+        self._status_updater = _update_status
+
         try:
             # --- Prepare task context ---
             ctx, messages, cap_info = self._prepare_task_context(task)
@@ -438,6 +469,14 @@ class OuroAgent:
 
         finally:
             self._busy = False
+            self._status_updater = None
+            # Delete live status message
+            if status_msg_id:
+                try:
+                    from supervisor.telegram import get_tg
+                    get_tg().delete_message(_status_chat_id, status_msg_id)
+                except Exception:
+                    pass
             # Clean up browser if it was used during this task
             try:
                 from ouro.tools.browser import cleanup_browser
@@ -597,6 +636,13 @@ class OuroAgent:
 
     def _emit_progress(self, text: str) -> None:
         self._last_progress_ts = time.time()
+        # Update live status message if active
+        try:
+            updater = getattr(self, "_status_updater", None)
+            if updater is not None:
+                updater(text)
+        except Exception:
+            pass
         if self._event_queue is None or self._current_chat_id is None:
             return
         try:
