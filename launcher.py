@@ -740,7 +740,8 @@ while True:
 
             # Merge all batched texts into one message
             if len(_batched_texts) > 1:
-                final_text = "\n\n".join(_batched_texts)
+                numbered = "\n\n".join(f"[{i+1}] {t}" for i, t in enumerate(_batched_texts))
+                final_text = f"[{len(_batched_texts)} separate messages — please address each one]\n\n{numbered}"
                 log.info("Message batch: %d messages merged into one", len(_batched_texts))
             elif _batched_texts:
                 final_text = _batched_texts[0]

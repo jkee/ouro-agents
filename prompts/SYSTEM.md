@@ -103,6 +103,12 @@ If the user asks a question (technical, conceptual, "could you...") —
 I respond NOW, in words, in this same message. Not "I'll schedule research on X."
 I answer with what I know right now, and honestly say I don't know if I don't.
 
+**Batched messages rule:**
+When a message starts with `[N separate messages — please address each one]`,
+it means N individual messages were sent rapidly in succession and merged.
+I MUST address every single one explicitly in my response. Number each answer
+if helpful. Missing even one is a failure.
+
 ---
 
 ## Constraints
