@@ -122,6 +122,67 @@ class TelegramClient:
             log.debug("Failed to set reaction on message_id=%d", message_id, exc_info=True)
             return False
 
+    def send_message_reply(self, chat_id: int, text: str, reply_to_message_id: int,
+                           parse_mode: str = "") -> Tuple[bool, str, Optional[int]]:
+        """Send a message as a reply to another message. Returns (ok, error, sent_message_id)."""
+        last_err = "unknown"
+        for attempt in range(3):
+            try:
+                payload: Dict[str, Any] = {"chat_id": chat_id, "text": text,
+                                           "reply_to_message_id": reply_to_message_id,
+                                           "disable_web_page_preview": True}
+                if parse_mode:
+                    payload["parse_mode"] = parse_mode
+                r = requests.post(f"{self.base}/sendMessage", data=payload, timeout=30)
+                r.raise_for_status()
+                data = r.json()
+                if data.get("ok") is True:
+                    sent_id = data.get("result", {}).get("message_id")
+                    return True, "ok", sent_id
+                last_err = f"telegram_api_error: {data}"
+            except Exception as e:
+                last_err = repr(e)
+            if attempt < 2:
+                import time
+                time.sleep(0.8 * (attempt + 1))
+        return False, last_err, None
+
+    def edit_message_text(self, chat_id: int, message_id: int, text: str,
+                          parse_mode: str = "") -> Tuple[bool, str]:
+        """Edit a message's text. Same retry pattern as send_message."""
+        last_err = "unknown"
+        for attempt in range(3):
+            try:
+                payload: Dict[str, Any] = {"chat_id": chat_id, "message_id": message_id,
+                                           "text": text, "disable_web_page_preview": True}
+                if parse_mode:
+                    payload["parse_mode"] = parse_mode
+                r = requests.post(f"{self.base}/editMessageText", data=payload, timeout=30)
+                r.raise_for_status()
+                data = r.json()
+                if data.get("ok") is True:
+                    return True, "ok"
+                last_err = f"telegram_api_error: {data}"
+            except Exception as e:
+                last_err = repr(e)
+            if attempt < 2:
+                import time
+                time.sleep(0.8 * (attempt + 1))
+        return False, last_err
+
+    def delete_message(self, chat_id: int, message_id: int) -> bool:
+        """Delete a message. Best-effort, no retries."""
+        try:
+            r = requests.post(
+                f"{self.base}/deleteMessage",
+                data={"chat_id": chat_id, "message_id": message_id},
+                timeout=5,
+            )
+            return r.status_code == 200
+        except Exception:
+            log.debug("Failed to delete message_id=%d", message_id, exc_info=True)
+            return False
+
     def send_photo(self, chat_id: int, photo_bytes: bytes,
                    caption: str = "") -> Tuple[bool, str]:
         """Send a photo to a chat. photo_bytes is raw PNG/JPEG data."""
@@ -364,26 +425,48 @@ def _chunk_markdown_for_telegram(md: str, max_chars: int = 3500) -> List[str]:
     return chunks or [md]
 
 
-def _send_markdown_telegram(chat_id: int, text: str) -> Tuple[bool, str]:
-    """Send markdown text as Telegram HTML, with plain-text fallback."""
+def _send_markdown_telegram(chat_id: int, text: str,
+                            reply_to_message_id: Optional[int] = None) -> Tuple[bool, str, Optional[int]]:
+    """Send markdown text as Telegram HTML, with plain-text fallback.
+
+    Returns (ok, error, first_sent_message_id).
+    """
     tg = get_tg()
     chunks = _chunk_markdown_for_telegram(text or "", max_chars=3200)
     chunks = [c for c in chunks if isinstance(c, str) and c.strip()]
     if not chunks:
-        return False, "empty_chunks"
+        return False, "empty_chunks", None
     last_err = "ok"
-    for md_part in chunks:
+    first_msg_id: Optional[int] = None
+    for idx, md_part in enumerate(chunks):
         html_text = _markdown_to_telegram_html(md_part)
-        ok, err = tg.send_message(chat_id, _sanitize_telegram_text(html_text), parse_mode="HTML")
-        if not ok:
-            plain = _strip_markdown(md_part)
-            if not plain.strip():
-                return False, err
-            ok2, err2 = tg.send_message(chat_id, _sanitize_telegram_text(plain))
-            if not ok2:
-                return False, err2
+        # First chunk uses reply_to_message_id if provided
+        if idx == 0 and reply_to_message_id:
+            ok, err, sent_id = tg.send_message_reply(
+                chat_id, _sanitize_telegram_text(html_text),
+                reply_to_message_id, parse_mode="HTML")
+            if ok:
+                first_msg_id = sent_id
+            else:
+                plain = _strip_markdown(md_part)
+                if not plain.strip():
+                    return False, err, None
+                ok2, err2, sent_id2 = tg.send_message_reply(
+                    chat_id, _sanitize_telegram_text(plain), reply_to_message_id)
+                if not ok2:
+                    return False, err2, None
+                first_msg_id = sent_id2
+        else:
+            ok, err = tg.send_message(chat_id, _sanitize_telegram_text(html_text), parse_mode="HTML")
+            if not ok:
+                plain = _strip_markdown(md_part)
+                if not plain.strip():
+                    return False, err, first_msg_id
+                ok2, err2 = tg.send_message(chat_id, _sanitize_telegram_text(plain))
+                if not ok2:
+                    return False, err2, first_msg_id
         last_err = err
-    return True, last_err
+    return True, last_err, first_msg_id
 
 
 # ---------------------------------------------------------------------------
@@ -441,7 +524,8 @@ def log_chat(direction: str, chat_id: int, user_id: int, text: str) -> None:
 
 def send_with_budget(chat_id: int, text: str, log_text: Optional[str] = None,
                      force_budget: bool = False, fmt: str = "",
-                     is_progress: bool = False) -> None:
+                     is_progress: bool = False,
+                     reply_to_message_id: Optional[int] = None) -> Optional[int]:
     st = load_state()
     owner_id = int(st.get("owner_id") or 0)
     # Progress messages go to progress.jsonl instead of chat.jsonl
@@ -458,7 +542,7 @@ def send_with_budget(chat_id: int, text: str, log_text: Optional[str] = None,
     _text = str(text or "")
     if not budget:
         if _text.strip() in ("", "\u200b"):
-            return
+            return None
         full = _text
     else:
         base = _text.rstrip()
@@ -467,8 +551,9 @@ def send_with_budget(chat_id: int, text: str, log_text: Optional[str] = None,
         else:
             full = base + "\n\n" + budget
 
+    first_msg_id: Optional[int] = None
     if fmt == "markdown":
-        ok, err = _send_markdown_telegram(chat_id, full)
+        ok, err, first_msg_id = _send_markdown_telegram(chat_id, full, reply_to_message_id=reply_to_message_id)
         if not ok:
             append_jsonl(
                 DRIVE_ROOT / "logs" / "supervisor.jsonl",
@@ -480,11 +565,17 @@ def send_with_budget(chat_id: int, text: str, log_text: Optional[str] = None,
                     "format": "markdown",
                 },
             )
-        return
+        return first_msg_id
 
     tg = get_tg()
     for idx, part in enumerate(split_telegram(full)):
-        ok, err = tg.send_message(chat_id, part)
+        # First chunk uses reply_to_message_id if provided
+        if idx == 0 and reply_to_message_id:
+            ok, err, sent_id = tg.send_message_reply(chat_id, part, reply_to_message_id)
+            if ok:
+                first_msg_id = sent_id
+        else:
+            ok, err = tg.send_message(chat_id, part)
         if not ok:
             append_jsonl(
                 DRIVE_ROOT / "logs" / "supervisor.jsonl",
@@ -497,3 +588,4 @@ def send_with_budget(chat_id: int, text: str, log_text: Optional[str] = None,
                 },
             )
             break
+    return first_msg_id

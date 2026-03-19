@@ -207,5 +207,88 @@ class TestVlmQueryTool(unittest.TestCase):
         self.assertIn("vlm_query", tools, "vlm_query must be registered")
 
 
+class TestGenerateImageTool(unittest.TestCase):
+    """Test the generate_image tool."""
+
+    def _make_ctx(self):
+        from ouro.tools.registry import ToolContext, BrowserState
+        ctx = MagicMock(spec=ToolContext)
+        ctx.browser_state = BrowserState()
+        ctx.event_queue = None
+        ctx.task_id = "test-task"
+        ctx.current_task_type = "task"
+        ctx.current_chat_id = 12345
+        ctx.pending_events = []
+        return ctx
+
+    def test_generate_image_success_sends_to_chat(self):
+        """generate_image calls LLM and queues send_photo event."""
+        from ouro.tools.vision import _generate_image
+
+        ctx = self._make_ctx()
+        fake_b64 = "iVBORw0KGgoAAAANSUh" * 100  # fake image data
+
+        with patch("ouro.tools.vision._get_llm_client") as mock_get_client:
+            mock_client = MagicMock()
+            mock_client.generate_image.return_value = (fake_b64, {"prompt_tokens": 10, "cost": 0.01})
+            mock_get_client.return_value = mock_client
+
+            result = _generate_image(ctx, prompt="A rubber duck in space")
+
+        self.assertIn("OK", result)
+        self.assertIn("sent to chat", result)
+        self.assertEqual(len(ctx.pending_events), 1)
+        event = ctx.pending_events[0]
+        self.assertEqual(event["type"], "send_photo")
+        self.assertEqual(event["chat_id"], 12345)
+        self.assertEqual(event["image_base64"], fake_b64)
+
+    def test_generate_image_no_send(self):
+        """generate_image with send_to_chat=False does not queue event."""
+        from ouro.tools.vision import _generate_image
+
+        ctx = self._make_ctx()
+        fake_b64 = "abc123" * 50
+
+        with patch("ouro.tools.vision._get_llm_client") as mock_get_client:
+            mock_client = MagicMock()
+            mock_client.generate_image.return_value = (fake_b64, {})
+            mock_get_client.return_value = mock_client
+
+            result = _generate_image(ctx, prompt="Test image", send_to_chat=False)
+
+        self.assertIn("OK", result)
+        self.assertNotIn("sent to chat", result)
+        self.assertEqual(len(ctx.pending_events), 0)
+
+    def test_generate_image_error_handling(self):
+        """generate_image returns error message on failure."""
+        from ouro.tools.vision import _generate_image
+
+        ctx = self._make_ctx()
+
+        with patch("ouro.tools.vision._get_llm_client") as mock_get_client:
+            mock_client = MagicMock()
+            mock_client.generate_image.side_effect = ValueError("No image returned")
+            mock_get_client.return_value = mock_client
+
+            result = _generate_image(ctx, prompt="Fail test")
+
+        self.assertIn("⚠️", result)
+        self.assertIn("No image returned", result)
+
+    def test_generate_image_tool_registered(self):
+        """generate_image tool is properly registered in the registry."""
+        import pathlib
+        from ouro.tools.registry import ToolRegistry
+
+        registry = ToolRegistry(
+            repo_dir=pathlib.Path("/tmp"),
+            drive_root=pathlib.Path("/tmp"),
+        )
+        tools = registry.available_tools()
+        self.assertIn("generate_image", tools, "generate_image must be registered")
+
+
 if __name__ == "__main__":
     unittest.main()

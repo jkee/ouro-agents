@@ -131,7 +131,8 @@ def _get_chat_agent():
     return _chat_agent
 
 
-def handle_chat_direct(chat_id: int, text: str, image_data: Optional[Union[Tuple[str, str], Tuple[str, str, str]]] = None) -> None:
+def handle_chat_direct(chat_id: int, text: str, image_data: Optional[Union[Tuple[str, str], Tuple[str, str, str]]] = None,
+                       message_id: Optional[int] = None) -> None:
     try:
         agent = _get_chat_agent()
         while True:
@@ -140,6 +141,7 @@ def handle_chat_direct(chat_id: int, text: str, image_data: Optional[Union[Tuple
                 "type": "task",
                 "chat_id": chat_id,
                 "text": text,
+                "message_id": message_id,
                 "_is_direct_chat": True,
             }
             if image_data:
@@ -169,6 +171,7 @@ def handle_chat_direct(chat_id: int, text: str, image_data: Optional[Union[Tuple
                 break
             text = "\n\n".join(leftover)
             image_data = None
+            message_id = None  # subsequent messages don't reply to original
     except Exception as e:
         import traceback
         err_msg = f"⚠️ Error: {type(e).__name__}: {e}"

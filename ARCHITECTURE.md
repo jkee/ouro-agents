@@ -158,6 +158,7 @@ Core LLM tool execution loop. This is my thinking-acting cycle.
 SSOT for all LLM API calls. Only module that talks to OpenRouter.
 
 - `chat()` — single LLM call with messages, tools, reasoning_effort.
+- `generate_image()` — image generation via OpenRouter (`modalities: ["image", "text"]`). Image returned in `message.images[0]`.
 - Usage tracking: accumulates tokens + cost across rounds.
 - **Default models**: main = `claude-sonnet-4.6`, code = `claude-opus-4.6`, light = `claude-haiku-4-5`.
 
@@ -230,7 +231,7 @@ Create `ouro/tools/my_tool.py`, export `get_tools() -> List[ToolEntry]`. No regi
 | shell.py | 274 | `run_shell`, `claude_code_edit` |
 | github.py | 266 | `list_github_issues`, `get_github_issue`, `comment_on_issue`, `close_github_issue`, `create_github_issue` |
 | git.py | 215 | `repo_commit_push`, `git_status`, `git_diff` |
-| vision.py | 193 | `analyze_screenshot`, `vlm_query` |
+| vision.py | 260 | `analyze_screenshot`, `vlm_query`, `generate_image` |
 | composio_tool.py | 165 | `composio_list_connections`, `composio_get_oauth_url`, `composio_run_action`, `composio_request_app` |
 | evolution_log.py | 159 | `log_evolution` |
 | tool_discovery.py | 103 | `list_available_tools`, `enable_tools` |
@@ -404,7 +405,7 @@ Reference table for complexity tracking (BIBLE.md §8: keep under 2000 lines).
 | supervisor/cron.py | ~230 | OK |
 | ouro/tools/ (18 modules) | ~4355 | OK (largest: evolution_stats.py 433) |
 | ouro/memory.py | ~269 | OK |
-| ouro/llm.py | ~290 | OK |
+| ouro/llm.py | ~335 | OK |
 | ouro/tools/registry.py | ~195 | OK |
 
 ---

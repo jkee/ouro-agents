@@ -70,6 +70,7 @@ class OuroAgent:
         self._pending_events: List[Dict[str, Any]] = []
         self._event_queue: Any = event_queue
         self._current_chat_id: Optional[int] = None
+        self._current_task_id: Optional[str] = None
         self._current_task_type: Optional[str] = None
 
         # Message injection: owner can send messages while agent is busy
@@ -338,7 +339,8 @@ class OuroAgent:
         )
         self.tools.set_context(ctx)
 
-        # Typing indicator via event queue (no direct Telegram API)
+        # Status indicator via event queue (reply-with-status pattern)
+        self._emit_status_start(task)
         self._emit_typing_start()
 
         # --- Build context (delegated to context.py) ---
@@ -378,6 +380,7 @@ class OuroAgent:
         self._last_progress_ts = start_time
         self._pending_events = []
         self._current_chat_id = int(task.get("chat_id") or 0) or None
+        self._current_task_id = str(task.get("id") or "")
         self._current_task_type = str(task.get("type") or "")
 
         drive_logs = self.env.drive_path("logs")
@@ -444,6 +447,7 @@ class OuroAgent:
             # are collected by handle_chat_direct and dispatched as a new task.
             if heartbeat_stop is not None:
                 heartbeat_stop.set()
+            self._current_task_id = None
             self._current_task_type = None
 
     # =====================================================================
@@ -465,7 +469,9 @@ class OuroAgent:
             "type": "send_message", "chat_id": task["chat_id"],
             "text": text or "\u200b", "log_text": text or "",
             "format": "markdown",
-            "task_id": task.get("id"), "ts": utc_now_iso(),
+            "task_id": task.get("id"),
+            "reply_to_message_id": task.get("message_id"),
+            "ts": utc_now_iso(),
         })
 
         duration_sec = round(time.time() - start_time, 3)
@@ -584,13 +590,31 @@ class OuroAgent:
             return
         try:
             self._event_queue.put({
-                "type": "send_message", "chat_id": self._current_chat_id,
-                "text": f"💬 {text}", "format": "markdown", "is_progress": True,
+                "type": "status_update",
+                "chat_id": self._current_chat_id,
+                "task_id": self._current_task_id,
+                "text": text,
                 "ts": utc_now_iso(),
             })
         except Exception:
             log.warning("Failed to emit progress event", exc_info=True)
             pass
+
+    def _emit_status_start(self, task: Dict[str, Any]) -> None:
+        """Emit status_start event so supervisor sends a reply-with-status indicator."""
+        original_msg_id = task.get("message_id")
+        if self._event_queue is None or self._current_chat_id is None or not original_msg_id:
+            return
+        try:
+            self._event_queue.put({
+                "type": "status_start",
+                "chat_id": self._current_chat_id,
+                "task_id": self._current_task_id,
+                "original_message_id": original_msg_id,
+                "ts": utc_now_iso(),
+            })
+        except Exception:
+            log.warning("Failed to emit status_start event", exc_info=True)
 
     def _emit_typing_start(self) -> None:
         if self._event_queue is None or self._current_chat_id is None:

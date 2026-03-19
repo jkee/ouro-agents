@@ -262,6 +262,10 @@ def _handle_tool_calls(
 
     Returns: Number of errors encountered
     """
+    # Emit tool names as progress so user sees what's happening
+    tool_names = [tc.get("function", {}).get("name", "?") for tc in tool_calls]
+    emit_progress(f"🔧 {', '.join(tool_names[:3])}")
+
     # Parallelize only for a strict read-only whitelist; all calls wrapped with timeout.
     can_parallel = (
         len(tool_calls) > 1 and

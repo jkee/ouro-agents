@@ -658,7 +658,8 @@ while True:
             continue
 
         log_chat("in", chat_id, user_id, text)
-        TG.set_reaction(chat_id, msg.get("message_id"))
+        user_message_id = msg.get("message_id")
+        TG.set_reaction(chat_id, user_message_id)
         st["last_owner_message_at"] = now_iso
         _last_message_ts = time.time()
         save_state(st)
@@ -771,14 +772,15 @@ while True:
             else:
                 # Dispatch to direct chat handler
                 _consciousness.pause()
-                def _run_task_and_resume(cid, txt, img):
+                def _run_task_and_resume(cid, txt, img, mid):
                     try:
-                        handle_chat_direct(cid, txt, img)
+                        handle_chat_direct(cid, txt, img, message_id=mid)
                     finally:
                         _consciousness.resume()
+                # Use first message's message_id for batched messages
                 _t = threading.Thread(
                     target=_run_task_and_resume,
-                    args=(chat_id, final_text, _batched_image),
+                    args=(chat_id, final_text, _batched_image, user_message_id),
                     daemon=True,
                 )
                 try:
