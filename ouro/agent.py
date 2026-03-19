@@ -440,11 +440,8 @@ class OuroAgent:
             except Exception:
                 log.debug("Failed to cleanup browser", exc_info=True)
                 pass
-            while not self._incoming_messages.empty():
-                try:
-                    self._incoming_messages.get_nowait()
-                except queue.Empty:
-                    break
+            # NOTE: do NOT drain _incoming_messages here — leftover messages
+            # are collected by handle_chat_direct and dispatched as a new task.
             if heartbeat_stop is not None:
                 heartbeat_stop.set()
             self._current_task_type = None

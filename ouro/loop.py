@@ -673,6 +673,9 @@ def run_llm_loop(
                 messages, llm_trace, emit_progress
             )
 
+            # Drain owner messages injected during tool execution
+            _drain_incoming_messages(messages, incoming_messages, drive_root, task_id, event_queue, _owner_msg_seen)
+
             # --- Budget guard ---
             # LLM decides when to stop (Bible P0, P3). We only enforce hard budget limit.
             budget_result = _check_budget_limits(
