@@ -408,7 +408,7 @@ class OuroAgent:
             if not status_msg_id:
                 return
             now = time.time()
-            if now - _last_status_update < 3.0:
+            if now - _last_status_update < 0.8:
                 return
             try:
                 from supervisor.telegram import get_tg
