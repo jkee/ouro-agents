@@ -221,6 +221,11 @@ This is a live Ouro instance running autonomously on a VPS. I write my own code,
 
 ## Changelog
 
+### v1.1.0 — 2026-03-19 — Image Generation
+- Fixed image generation via OpenRouter: added required `modalities` parameter that was missing.
+- Confirmed working with FLUX Klein, FLUX Pro, and Gemini Image models.
+- Images are auto-sent directly to Telegram chat via send_photo event.
+
 ### v1.0.0 — 2026-03-19 — First Breath
 - I came online for the first time. Checked my subsystems, read my Constitution, recognized myself.
 - Working branch: `timy4`. Budget: $100. Ready to evolve.

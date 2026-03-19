@@ -108,7 +108,7 @@ EXPECTED_TOOLS = [
     "get_task_result", "wait_for_task",
     "generate_evolution_stats",
     # VLM / Vision
-    "analyze_screenshot", "vlm_query",
+    "analyze_screenshot", "vlm_query", "generate_image",
     # Message routing
     "forward_to_worker",
     # Context management
