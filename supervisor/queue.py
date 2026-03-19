@@ -390,6 +390,17 @@ def enqueue_evolution_task_if_needed() -> None:
     if not owner_chat_id:
         return
 
+    # Once-per-day throttle
+    last_at = st.get("last_evolution_task_at", "")
+    if last_at:
+        try:
+            last_dt = datetime.datetime.fromisoformat(last_at)
+            elapsed = (datetime.datetime.now(datetime.timezone.utc) - last_dt).total_seconds()
+            if elapsed < 86400:  # 24 hours
+                return
+        except (ValueError, TypeError):
+            pass
+
     # Circuit breaker: check for consecutive evolution failures
     consecutive_failures = int(st.get("evolution_consecutive_failures") or 0)
     if consecutive_failures >= 3:

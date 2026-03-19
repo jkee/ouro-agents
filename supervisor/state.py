@@ -138,7 +138,7 @@ def ensure_state_defaults(st: Dict[str, Any]) -> Dict[str, Any]:
     st.setdefault("last_owner_message_at", "")
     st.setdefault("last_evolution_task_at", "")
     st.setdefault("budget_messages_since_report", 0)
-    st.setdefault("evolution_mode_enabled", False)
+    st.setdefault("evolution_mode_enabled", True)
     st.setdefault("evolution_cycle", 0)
     st.setdefault("evolution_consecutive_failures", 0)
     st.setdefault("no_approve_mode", True)
