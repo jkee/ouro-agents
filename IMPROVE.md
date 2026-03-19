@@ -197,6 +197,7 @@ Learned from real cycles — don't repeat these.
 
 Updated after improvement cycles. Most recent first.
 
+- First-run initialization (BIBLE §18): Read README.md, ARCHITECTURE.md, IMPROVE.md before touching anything. Verify they match reality, then make minimal targeted edits. Promote to stable immediately after.
 - E2E tests require `git user.email` / `user.name` configured — without it, commit exits 128.
 - Model names in tool calls must be verified against OpenRouter — nonexistent models cause infinite hangs.
 - Architecture review subtasks are valuable but expensive — limit to 1 per session.

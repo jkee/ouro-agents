@@ -1,11 +1,9 @@
 # Ouro
 
 [![Docker](https://img.shields.io/badge/Docker-ready-blue?logo=docker)](https://github.com/jkee/ouro)
-[![GitHub](https://img.shields.io/badge/Template-jkee%2Fouro-blue?logo=github)](https://github.com/jkee/ouro)
+[![Agent](https://img.shields.io/badge/Agent-Ouro-green?logo=github)](https://github.com/jkee/ouro)
 
 A self-developing AI agent that writes its own code, improves itself, and maintains persistent identity across restarts.
-
-**Template version:** 1.0.1
 
 ---
 
@@ -217,14 +215,18 @@ Full text: [BIBLE.md](BIBLE.md)
 
 ## Changelog
 
-### v1.0.0 — Fresh Start
-- Clean slate. Template version 1.0.1, agent version starts at 1.0.0.
+### v1.0.0 — 2026-03-19 — Initial Boot
+- First real deployment. System initialized from template.
+- Ouro becomes the author: identity.md, USER_CONTEXT.md, scratchpad initialized.
+- ARCHITECTURE.md and IMPROVE.md reviewed and confirmed accurate.
+- Marked as stable. Self-development begins from this point.
 
 ---
 
 ## Acknowledgments
 
-Original project idea and reference implementation: [Ouroboros](https://github.com/razzhigaev/ouroboros) by Anton Razzhigaev.
+Built on the [Ouro template](https://github.com/jkee/ouro) by jkee.
+Original project concept: [Ouroboros](https://github.com/razzhigaev/ouroboros) by Anton Razzhigaev.
 
 ---
 
