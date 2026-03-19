@@ -75,6 +75,7 @@ class OuroAgent:
         # Message injection: owner can send messages while agent is busy
         self._incoming_messages: queue.Queue = queue.Queue()
         self._busy = False
+        self._pending_messages_callback: Optional[callable] = None
         self._last_progress_ts: float = 0.0
         self._task_started_ts: float = 0.0
 
@@ -88,6 +89,10 @@ class OuroAgent:
     def inject_message(self, text: str) -> None:
         """Thread-safe: inject owner message into the active conversation."""
         self._incoming_messages.put(text)
+
+    def register_pending_messages_callback(self, cb) -> None:
+        """Register callback called with pending injected messages after task completes."""
+        self._pending_messages_callback = cb
 
     def _log_worker_boot_once(self) -> None:
         global _worker_boot_logged
@@ -440,11 +445,20 @@ class OuroAgent:
             except Exception:
                 log.debug("Failed to cleanup browser", exc_info=True)
                 pass
+            # Collect any messages injected while task was running
+            _leftover = []
             while not self._incoming_messages.empty():
                 try:
-                    self._incoming_messages.get_nowait()
+                    _leftover.append(self._incoming_messages.get_nowait())
                 except queue.Empty:
                     break
+            _cb = self._pending_messages_callback
+            self._pending_messages_callback = None
+            if _leftover and _cb:
+                try:
+                    _cb(_leftover)
+                except Exception:
+                    log.debug("pending_messages_callback failed", exc_info=True)
             if heartbeat_stop is not None:
                 heartbeat_stop.set()
             self._current_task_type = None

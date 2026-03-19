@@ -131,8 +131,23 @@ def _get_chat_agent():
 
 
 def handle_chat_direct(chat_id: int, text: str, image_data: Optional[Union[Tuple[str, str], Tuple[str, str, str]]] = None) -> None:
+    agent = None
     try:
         agent = _get_chat_agent()
+
+        # Register callback to handle messages injected while this task runs
+        def _on_pending(messages: list) -> None:
+            combined = "\n\n".join(messages)
+            log.info("Processing %d pending injected message(s) after task: %s",
+                     len(messages), combined[:100])
+            t = threading.Thread(
+                target=handle_chat_direct,
+                args=(chat_id, combined, None),
+                daemon=True,
+            )
+            t.start()
+        agent.register_pending_messages_callback(_on_pending)
+
         task = {
             "id": uuid.uuid4().hex[:8],
             "type": "task",
@@ -172,6 +187,13 @@ def handle_chat_direct(chat_id: int, text: str, image_data: Optional[Union[Tuple
             get_tg().send_message(chat_id, err_msg)
         except Exception:
             log.debug("Suppressed exception", exc_info=True)
+    finally:
+        # Clear callback to avoid stale reference
+        try:
+            if agent is not None:
+                agent.register_pending_messages_callback(None)
+        except Exception:
+            pass
 
 
 # ---------------------------------------------------------------------------
