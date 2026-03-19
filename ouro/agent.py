@@ -636,23 +636,12 @@ class OuroAgent:
 
     def _emit_progress(self, text: str) -> None:
         self._last_progress_ts = time.time()
-        # Update live status message if active
+        # Update live reply-status message if active
         try:
             updater = getattr(self, "_status_updater", None)
             if updater is not None:
                 updater(text)
         except Exception:
-            pass
-        if self._event_queue is None or self._current_chat_id is None:
-            return
-        try:
-            self._event_queue.put({
-                "type": "send_message", "chat_id": self._current_chat_id,
-                "text": f"💬 {text}", "format": "markdown", "is_progress": True,
-                "ts": utc_now_iso(),
-            })
-        except Exception:
-            log.warning("Failed to emit progress event", exc_info=True)
             pass
 
     def _emit_typing_start(self) -> None:
