@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -E \"^-.*\\\\.\\(py|sh|yml|yaml|toml\\)$\")",
+      "Bash(docker --version)",
+      "Bash(docker compose:*)",
+      "Bash(make test:*)",
+      "Bash(python3:*)",
+      "Bash(pip3 install:*)",
+      "Bash(pip --version)",
+      "Bash(pip3 --version)"
+    ]
+  }
+}

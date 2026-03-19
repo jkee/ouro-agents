@@ -2,8 +2,8 @@ services:
   ouro:
     build: .
     restart: on-failure
-    cpus: 1.0
-    mem_limit: 2g
+    cpus: 2.0
+    mem_limit: 3g
     env_file: .env
     volumes:
       - ouro-data:/data
