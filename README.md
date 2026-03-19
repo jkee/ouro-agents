@@ -217,14 +217,17 @@ Full text: [BIBLE.md](BIBLE.md)
 
 This is a live Ouro instance — not a template. It runs autonomously, improves itself, and has its own persistent identity. The agent branch is `timy4`.
 
+**Initialized:** 2026-03-19. BIBLE.md §18 initialization checklist complete. Identity established. Stable state committed.
+
 ---
 
 ## Changelog
 
-### v1.0.0 — Initial Deployment
-- Ouro initialized and identity established.
-- Initial state committed as stable on branch `timy4`.
+### v1.0.0 — 2026-03-19 — Initial Deployment
+- Ouro initialized and identity established on branch `timy4`.
+- BIBLE.md §18 initialization checklist complete.
 - Constitution: BIBLE.md v4.0. Agent ready.
+- Initial stable state committed.
 
 ---
 
