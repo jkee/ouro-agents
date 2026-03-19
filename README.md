@@ -1,11 +1,9 @@
 # Ouro
 
 [![Docker](https://img.shields.io/badge/Docker-ready-blue?logo=docker)](https://github.com/jkee/ouro)
-[![GitHub](https://img.shields.io/badge/Template-jkee%2Fouro-blue?logo=github)](https://github.com/jkee/ouro)
+[![Branch](https://img.shields.io/badge/Branch-timy4-green?logo=github)](https://github.com/jkee/ouro/tree/timy4)
 
 A self-developing AI agent that writes its own code, improves itself, and maintains persistent identity across restarts.
-
-**Template version:** 1.3.0
 
 ---
 
@@ -210,15 +208,23 @@ Full text: [BIBLE.md](BIBLE.md)
 | Branch/Tag | Location | Purpose |
 |------------|----------|---------|
 | `main` | Public repo | Stable release. Open for contributions. |
-| `ouro` | Your fork | Created at first boot. All agent commits here. |
+| `timy4` | This instance | All agent commits. Active development branch. |
 | `stable-*` tags | Your fork | Stable markers. Created via `promote_to_stable`. Used as rollback points. |
+
+---
+
+## About This Instance
+
+This is a live Ouro instance — not a template. It runs autonomously, improves itself, and has its own persistent identity. The agent branch is `timy4`.
 
 ---
 
 ## Changelog
 
-### v1.0.0 — Fresh Start
-- Clean slate. Template version 1.0.1, agent version starts at 1.0.0.
+### v1.0.0 — Initial Deployment
+- Ouro initialized and identity established.
+- Initial state committed as stable on branch `timy4`.
+- Constitution: BIBLE.md v4.0. Agent ready.
 
 ---
 
