@@ -20,6 +20,63 @@ from typing import Any, Dict, Optional
 
 log = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Status message tracking (reply-with-status pattern)
+# ---------------------------------------------------------------------------
+_STATUS_MESSAGES: Dict[str, Dict] = {}
+# {task_id: {chat_id, status_msg_id, original_msg_id, last_edit_ts, last_text}}
+
+
+def _handle_status_start(evt: Dict[str, Any], ctx: Any) -> None:
+    """Send initial status reply to the user's message."""
+    original_msg_id = evt.get("original_message_id")
+    if not original_msg_id:
+        return  # evolution/consciousness/scheduled — no status message
+    chat_id = int(evt.get("chat_id") or 0)
+    task_id = str(evt.get("task_id") or "")
+    if not chat_id or not task_id:
+        return
+    try:
+        ok, err, sent_id = ctx.TG.send_message_reply(chat_id, "⏳", original_msg_id)
+        if ok and sent_id:
+            _STATUS_MESSAGES[task_id] = {
+                "chat_id": chat_id,
+                "status_msg_id": sent_id,
+                "original_msg_id": original_msg_id,
+                "last_edit_ts": time.time(),
+                "last_text": "⏳",
+            }
+    except Exception:
+        log.debug("Failed to send status_start message", exc_info=True)
+
+
+def _handle_status_update(evt: Dict[str, Any], ctx: Any) -> None:
+    """Edit the status message with progress text (debounced).
+
+    Falls back to sending a separate progress message if no status message
+    is being tracked for this task (evolution, consciousness, worker-mode).
+    """
+    task_id = str(evt.get("task_id") or "")
+    status = _STATUS_MESSAGES.get(task_id)
+    text = str(evt.get("text") or "")
+    if not status:
+        # Fallback: send as a regular progress message (old behavior)
+        chat_id = int(evt.get("chat_id") or 0)
+        if chat_id and text:
+            ctx.send_with_budget(chat_id, f"💬 {text}", fmt="markdown", is_progress=True)
+        return
+    new_text = f"⏳ {text}" if text else "⏳"
+    now = time.time()
+    if now - status["last_edit_ts"] < 2.0:
+        status["last_text"] = new_text  # store for lazy flush
+        return
+    try:
+        ctx.TG.edit_message_text(status["chat_id"], status["status_msg_id"], new_text)
+        status["last_edit_ts"] = now
+        status["last_text"] = new_text
+    except Exception:
+        log.debug("Failed to edit status message", exc_info=True)
+
 
 def _handle_llm_usage(evt: Dict[str, Any], ctx: Any) -> None:
     usage = evt.get("usage") or {}
@@ -66,15 +123,33 @@ def _handle_typing_start(evt: Dict[str, Any], ctx: Any) -> None:
 
 def _handle_send_message(evt: Dict[str, Any], ctx: Any) -> None:
     try:
+        task_id = str(evt.get("task_id") or "")
         log_text = evt.get("log_text")
         fmt = str(evt.get("format") or "")
         is_progress = bool(evt.get("is_progress"))
+
+        # Determine reply_to_message_id
+        reply_to = evt.get("reply_to_message_id")
+
+        # If this task has a status message, this is the final message
+        status = _STATUS_MESSAGES.pop(task_id, None)
+        if status:
+            # Delete the status message (best-effort)
+            try:
+                ctx.TG.delete_message(status["chat_id"], status["status_msg_id"])
+            except Exception:
+                log.debug("Failed to delete status message", exc_info=True)
+            # Reply to original message if not already set
+            if not reply_to:
+                reply_to = status.get("original_msg_id")
+
         ctx.send_with_budget(
             int(evt["chat_id"]),
             str(evt.get("text") or ""),
             log_text=(str(log_text) if isinstance(log_text, str) else None),
             fmt=fmt,
             is_progress=is_progress,
+            reply_to_message_id=int(reply_to) if reply_to else None,
         )
     except Exception as e:
         ctx.append_jsonl(
@@ -89,6 +164,14 @@ def _handle_send_message(evt: Dict[str, Any], ctx: Any) -> None:
 def _handle_task_done(evt: Dict[str, Any], ctx: Any) -> None:
     task_id = evt.get("task_id")
     task_type = str(evt.get("task_type") or "")
+
+    # Safety cleanup: delete orphaned status message if still present
+    status = _STATUS_MESSAGES.pop(str(task_id) if task_id else "", None)
+    if status:
+        try:
+            ctx.TG.delete_message(status["chat_id"], status["status_msg_id"])
+        except Exception:
+            log.debug("Failed to delete orphaned status message on task_done", exc_info=True)
     wid = evt.get("worker_id")
 
     # Track evolution task success/failure for circuit breaker
@@ -416,6 +499,8 @@ EVENT_HANDLERS = {
     "llm_usage": _handle_llm_usage,
     "task_heartbeat": _handle_task_heartbeat,
     "typing_start": _handle_typing_start,
+    "status_start": _handle_status_start,
+    "status_update": _handle_status_update,
     "send_message": _handle_send_message,
     "task_done": _handle_task_done,
     "task_metrics": _handle_task_metrics,
