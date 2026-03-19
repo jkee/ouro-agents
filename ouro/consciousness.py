@@ -25,6 +25,7 @@ import queue
 import threading
 import time
 import traceback
+import datetime
 from typing import Any, Callable, Dict, List, Optional
 
 from ouro.utils import (
@@ -510,11 +511,15 @@ class BackgroundConsciousness:
             last_at = st.get("arch_review_last_at", "")
             current_index = int(st.get("arch_review_index", 0))
 
-            # First boot: seed the timestamp so the review doesn't fire immediately
-            if not last_at:
-                st["arch_review_last_at"] = utc_now_iso()
-                save_state(st)
-                return
+            # Delay arch review 24h after launch (prevents firing right after restart)
+            launched_at = st.get("launched_at") or ""
+            if launched_at:
+                try:
+                    launch_dt = datetime.datetime.fromisoformat(launched_at)
+                    if (datetime.datetime.now(datetime.timezone.utc) - launch_dt).total_seconds() < 86400:
+                        return
+                except (ValueError, TypeError):
+                    pass
 
             if not is_review_due(last_at):
                 return

@@ -236,8 +236,12 @@ if not _init_st.get("initialized"):
     log.info("First-run initialization complete")
 
 # ----------------------------
-# 6) Start workers
+# 6) Record launch time & start workers
 # ----------------------------
+_launch_st = load_state()
+_launch_st["launched_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+save_state(_launch_st)
+
 kill_workers()
 spawn_workers(MAX_WORKERS)
 restored_pending = restore_pending_from_snapshot()

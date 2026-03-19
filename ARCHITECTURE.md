@@ -77,7 +77,7 @@ SSOT for persistent state. File: `/data/state/state.json`.
 - **Atomic writes**: temp file → `os.replace()` + fsync. No corruption on crash.
 - **File locks**: `/data/locks/state.lock`, 4s timeout, stale detection at 90s.
 - **Budget tracking**: local accumulation per LLM call + periodic OpenRouter ground-truth sync (every 10 calls).
-- **Key fields**: `owner_id`, `spent_usd`, `spent_tokens_*`, `openrouter_limit_remaining`, `current_branch`, `no_approve_mode`, `evolution_mode_enabled`, `initialized`.
+- **Key fields**: `owner_id`, `spent_usd`, `spent_tokens_*`, `openrouter_limit_remaining`, `current_branch`, `no_approve_mode`, `evolution_mode_enabled`, `initialized`, `launched_at`.
 
 ### supervisor/telegram.py (~591 lines)
 
@@ -107,7 +107,7 @@ Priority task queue with timeout enforcement.
 - **Priority**: task/review = 0 (highest), evolution = 1, other = 2.
 - **Timeouts**: soft (600s, sends warning to user), hard (1800s, kills worker and respawns).
 - **Heartbeat staleness**: 120s with no progress update = presumed dead.
-- **Evolution scheduling**: auto-enqueues evolution tasks if enabled + budget available.
+- **Evolution scheduling**: auto-enqueues evolution tasks if enabled + budget available. 24h cooldown after launch and between cycles.
 - **Persistence**: snapshots to `/data/state/queue_snapshot.json` for restart recovery (max 15 min staleness).
 
 ### supervisor/cron.py (~230 lines)
