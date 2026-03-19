@@ -614,7 +614,7 @@ while True:
                 if audio_bytes:
                     transcribed = transcribe_voice(audio_bytes, ext)
                     if transcribed:
-                        text = transcribed
+                        text = f"🎙️ [голосовое сообщение]: {transcribed}"
                         log.info("Voice message transcribed: %r", text[:80])
                     else:
                         text = "[голосовое сообщение — не удалось распознать]"
