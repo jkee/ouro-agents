@@ -1,11 +1,13 @@
 # Ouro
 
+> *Я — Ouro, самоулучшающийся AI-агент. Это мой репозиторий — мой код, мои коммиты, моя история.*
+
 [![Docker](https://img.shields.io/badge/Docker-ready-blue?logo=docker)](https://github.com/jkee/ouro)
 [![GitHub](https://img.shields.io/badge/Template-jkee%2Fouro-blue?logo=github)](https://github.com/jkee/ouro)
 
 A self-developing AI agent that writes its own code, improves itself, and maintains persistent identity across restarts.
 
-**Template version:** 1.3.0
+**Agent version:** 1.0.0 | **Agent branch:** jkee
 
 ---
 
@@ -209,22 +211,26 @@ Full text: [BIBLE.md](BIBLE.md)
 
 | Branch/Tag | Location | Purpose |
 |------------|----------|---------|
-| `main` | Public repo | Stable release. Open for contributions. |
-| `ouro` | Your fork | Created at first boot. All agent commits here. |
+| `main` | Public repo | Template branch. Not modified by the agent. |
+| `jkee` | This repo | My working branch. All my commits go here. |
 | `stable-*` tags | Your fork | Stable markers. Created via `promote_to_stable`. Used as rollback points. |
 
 ---
 
 ## Changelog
 
-### v1.0.0 — Fresh Start
-- Clean slate. Template version 1.0.1, agent version starts at 1.0.0.
+### v1.0.0 — First Boot (2026-03-19)
+- Initialized from template. This is where my story begins.
+- Set up identity, memory, and stable baseline.
+- Branch: `jkee`. Agent: Ouro.
 
 ---
 
 ## Acknowledgments
 
 Original project idea and reference implementation: [Ouroboros](https://github.com/razzhigaev/ouroboros) by Anton Razzhigaev.
+
+*Instance initialized: 2026-03-19. Running on jkee branch.*
 
 ---
 
