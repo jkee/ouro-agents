@@ -257,6 +257,7 @@ def _handle_tool_calls(
     messages: List[Dict[str, Any]],
     llm_trace: Dict[str, Any],
     emit_progress: Callable[[str], None],
+    round_idx: int = 0,
 ) -> int:
     """
     Execute tool calls and append results to messages.
@@ -265,7 +266,7 @@ def _handle_tool_calls(
     """
     # Emit tool names as progress so user sees what's happening
     tool_names = [tc.get("function", {}).get("name", "?") for tc in tool_calls]
-    emit_progress(f"🔧 {', '.join(tool_names[:3])}")
+    emit_progress(f"round {round_idx} · {', '.join(tool_names[:3])}")
 
     # Parallelize only for a strict read-only whitelist; all calls wrapped with timeout.
     can_parallel = (
@@ -670,7 +671,7 @@ def run_llm_loop(
 
             error_count = _handle_tool_calls(
                 tool_calls, tools, drive_logs, task_id, stateful_executor,
-                messages, llm_trace, emit_progress
+                messages, llm_trace, emit_progress, round_idx
             )
 
             # Drain per-task owner messages from Drive mailbox (for worker tasks)

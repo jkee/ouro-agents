@@ -45,6 +45,7 @@ def _handle_status_start(evt: Dict[str, Any], ctx: Any) -> None:
                 "original_msg_id": original_msg_id,
                 "last_edit_ts": time.time(),
                 "last_text": "⏳",
+                "counter": 0,
             }
     except Exception:
         log.debug("Failed to send status_start message", exc_info=True)
@@ -65,9 +66,13 @@ def _handle_status_update(evt: Dict[str, Any], ctx: Any) -> None:
         if chat_id and text:
             ctx.send_with_budget(chat_id, f"💬 {text}", fmt="markdown", is_progress=True)
         return
-    new_text = f"⏳ {text}" if text else "⏳"
+    # Increment counter before throttle check (every event counts)
+    status["counter"] = status.get("counter", 0) + 1
+    counter = status["counter"]
+    hourglass = "⏳" if counter % 2 == 0 else "⌛"
+    new_text = f"{hourglass} {text[:180]} · {counter}" if text else hourglass
     now = time.time()
-    if now - status["last_edit_ts"] < 2.0:
+    if now - status["last_edit_ts"] < 1.0:
         status["last_text"] = new_text  # store for lazy flush
         return
     try:
