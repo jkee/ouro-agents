@@ -14,11 +14,13 @@ from __future__ import annotations
 import datetime
 import json
 import logging
+import os
 import re
 import threading
 import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 log = logging.getLogger(__name__)
 
@@ -30,6 +32,25 @@ _WEEKDAYS = {
 }
 
 _WEEKDAY_PATTERN = "|".join(_WEEKDAYS.keys())
+
+
+def _get_default_tz() -> datetime.timezone | ZoneInfo:
+    """Return timezone from TZ env var, defaulting to UTC."""
+    tz_name = os.environ.get("TZ", "").strip()
+    if not tz_name or tz_name.upper() == "UTC":
+        return datetime.timezone.utc
+    try:
+        return ZoneInfo(tz_name)
+    except ZoneInfoNotFoundError:
+        log.warning("Unknown timezone %r in TZ env var, falling back to UTC", tz_name)
+        return datetime.timezone.utc
+
+
+def _tz_label(tz) -> str:
+    if tz is datetime.timezone.utc:
+        return ""
+    name = str(tz)  # e.g. "Europe/Moscow"
+    return f" ({name})"
 
 
 def _parse_time(time_str: str) -> Tuple[int, int]:
@@ -45,12 +66,24 @@ def _parse_time(time_str: str) -> Tuple[int, int]:
     return h, mi
 
 
-def parse_schedule(expr: str, from_dt: Optional[datetime.datetime] = None) -> Tuple[datetime.datetime, str]:
+def _next_time_in_tz(from_dt_utc: datetime.datetime, h: int, mi: int, tz) -> datetime.datetime:
+    """
+    Return the next datetime at HH:MM in the given tz, as UTC-aware datetime.
+    """
+    from_local = from_dt_utc.astimezone(tz)
+    candidate_local = from_local.replace(hour=h, minute=mi, second=0, microsecond=0)
+    return candidate_local.astimezone(datetime.timezone.utc)
+
+
+def parse_schedule(expr: str, from_dt: Optional[datetime.datetime] = None, tz=None) -> Tuple[datetime.datetime, str]:
     """
     Parse a human-friendly schedule expression.
     Returns (next_run_utc, human_readable_description).
     Raises ValueError with a helpful message if the expression is unrecognized.
     """
+    if tz is None:
+        tz = _get_default_tz()
+
     if from_dt is None:
         from_dt = datetime.datetime.now(datetime.timezone.utc)
     # Ensure from_dt is UTC-aware
@@ -69,19 +102,22 @@ def parse_schedule(expr: str, from_dt: Optional[datetime.datetime] = None) -> Tu
         time_str = m.group(2) or "09:00"
         h, mi = _parse_time(time_str)
         target_wd = _WEEKDAYS[day_name]
-        current_wd = from_dt.weekday()
+
+        # Convert from_dt to local tz to find the current weekday
+        from_local = from_dt.astimezone(tz)
+        current_wd = from_local.weekday()
         days_ahead = target_wd - current_wd
 
-        candidate = from_dt.replace(hour=h, minute=mi, second=0, microsecond=0)
+        candidate_local = from_local.replace(hour=h, minute=mi, second=0, microsecond=0)
         if days_ahead == 0:
-            # Same weekday: fire today if we're still before the target time
-            next_run = candidate if from_dt < candidate else candidate + datetime.timedelta(weeks=1)
+            candidate_utc = candidate_local.astimezone(datetime.timezone.utc)
+            next_run = candidate_utc if from_dt < candidate_utc else (candidate_local + datetime.timedelta(weeks=1)).astimezone(datetime.timezone.utc)
         elif days_ahead > 0:
-            next_run = candidate + datetime.timedelta(days=days_ahead)
+            next_run = (candidate_local + datetime.timedelta(days=days_ahead)).astimezone(datetime.timezone.utc)
         else:
-            next_run = candidate + datetime.timedelta(days=days_ahead + 7)
+            next_run = (candidate_local + datetime.timedelta(days=days_ahead + 7)).astimezone(datetime.timezone.utc)
 
-        desc = f"Every {day_name.capitalize()} at {time_str}"
+        desc = f"Every {day_name.capitalize()} at {time_str}{_tz_label(tz)}"
         return next_run, desc
 
     # "daily at HH:MM"
@@ -89,9 +125,14 @@ def parse_schedule(expr: str, from_dt: Optional[datetime.datetime] = None) -> Tu
     if m:
         time_str = m.group(1)
         h, mi = _parse_time(time_str)
-        candidate = from_dt.replace(hour=h, minute=mi, second=0, microsecond=0)
-        next_run = candidate if from_dt < candidate else candidate + datetime.timedelta(days=1)
-        desc = f"Daily at {time_str}"
+        candidate_utc = _next_time_in_tz(from_dt, h, mi, tz)
+        if from_dt < candidate_utc:
+            next_run = candidate_utc
+        else:
+            from_local = from_dt.astimezone(tz)
+            candidate_local = from_local.replace(hour=h, minute=mi, second=0, microsecond=0)
+            next_run = (candidate_local + datetime.timedelta(days=1)).astimezone(datetime.timezone.utc)
+        desc = f"Daily at {time_str}{_tz_label(tz)}"
         return next_run, desc
 
     # "every N hours"
@@ -122,8 +163,9 @@ def parse_schedule(expr: str, from_dt: Optional[datetime.datetime] = None) -> Tu
             raise ValueError("Interval must be at least 1 day.")
         time_str = m.group(2) or "09:00"
         h, mi = _parse_time(time_str)
-        base = from_dt + datetime.timedelta(days=n)
-        next_run = base.replace(hour=h, minute=mi, second=0, microsecond=0)
+        base_local = (from_dt + datetime.timedelta(days=n)).astimezone(tz)
+        next_local = base_local.replace(hour=h, minute=mi, second=0, microsecond=0)
+        next_run = next_local.astimezone(datetime.timezone.utc)
         desc = f"Every {n} day{'s' if n != 1 else ''}" + (f" at {time_str}" if m.group(2) else "")
         return next_run, desc
 
@@ -132,6 +174,16 @@ def parse_schedule(expr: str, from_dt: Optional[datetime.datetime] = None) -> Tu
         "Supported formats: 'every monday [at HH:MM]', 'weekly on monday [at HH:MM]', "
         "'daily at HH:MM', 'every N hours', 'every N minutes', 'every N days [at HH:MM]'."
     )
+
+
+def _tz_from_str(tz_str: str):
+    """Reconstruct a tz object from a stored string name."""
+    if not tz_str or tz_str == "UTC":
+        return datetime.timezone.utc
+    try:
+        return ZoneInfo(tz_str)
+    except ZoneInfoNotFoundError:
+        return datetime.timezone.utc
 
 
 class CronScheduler:
@@ -146,9 +198,11 @@ class CronScheduler:
     # Public API
     # ------------------------------------------------------------------
 
-    def add_job(self, description: str, schedule_expr: str, chat_id: int) -> Dict[str, Any]:
+    def add_job(self, description: str, schedule_expr: str, chat_id: int, tz=None) -> Dict[str, Any]:
         """Add a new scheduled job. Returns the job dict."""
-        next_run, human_desc = parse_schedule(schedule_expr)
+        if tz is None:
+            tz = _get_default_tz()
+        next_run, human_desc = parse_schedule(schedule_expr, tz=tz)
         job: Dict[str, Any] = {
             "id": uuid.uuid4().hex,
             "description": description,
@@ -158,6 +212,7 @@ class CronScheduler:
             "chat_id": chat_id,
             "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
             "last_run_utc": None,
+            "timezone": str(tz),
         }
         with self._lock:
             jobs = self._load()
@@ -216,7 +271,8 @@ class CronScheduler:
 
                     job["last_run_utc"] = now.isoformat()
                     try:
-                        new_next, _ = parse_schedule(job["schedule_expr"], from_dt=now)
+                        job_tz = _tz_from_str(job.get("timezone", "UTC"))
+                        new_next, _ = parse_schedule(job["schedule_expr"], from_dt=now, tz=job_tz)
                         job["next_run_utc"] = new_next.isoformat()
                     except Exception:
                         log.warning("Cron failed to recompute next_run for job %s", job["id"], exc_info=True)

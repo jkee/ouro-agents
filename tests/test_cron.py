@@ -314,3 +314,80 @@ class TestCronSchedulerTick:
         s = CronScheduler(tmp_path)
         fired = s.tick(enqueue_fn=lambda _: None)
         assert fired == 0
+
+
+# ---------------------------------------------------------------------------
+# Timezone support
+# ---------------------------------------------------------------------------
+
+class TestTimezone:
+    """Tests for timezone-aware scheduling."""
+
+    def test_daily_in_utc3_before_local_time(self):
+        """
+        User in UTC+3. It's 08:00 UTC (= 11:00 local).
+        'daily at 12:00' → today at 12:00 local = 09:00 UTC (still in future).
+        """
+        from zoneinfo import ZoneInfo
+        tz = ZoneInfo("Europe/Moscow")  # UTC+3
+        # 2025-01-06 08:00 UTC = 11:00 Moscow
+        from_dt = datetime.datetime(2025, 1, 6, 8, 0, tzinfo=UTC)
+        dt, desc = parse_schedule("daily at 12:00", from_dt=from_dt, tz=tz)
+        assert dt == datetime.datetime(2025, 1, 6, 9, 0, tzinfo=UTC)  # 12:00 Moscow = 09:00 UTC
+        assert "Europe/Moscow" in desc
+
+    def test_daily_in_utc3_after_local_time(self):
+        """
+        User in UTC+3. It's 12:00 UTC (= 15:00 local).
+        'daily at 12:00' → tomorrow at 12:00 local = tomorrow 09:00 UTC.
+        """
+        from zoneinfo import ZoneInfo
+        tz = ZoneInfo("Europe/Moscow")  # UTC+3
+        from_dt = datetime.datetime(2025, 1, 6, 12, 0, tzinfo=UTC)
+        dt, desc = parse_schedule("daily at 12:00", from_dt=from_dt, tz=tz)
+        assert dt == datetime.datetime(2025, 1, 7, 9, 0, tzinfo=UTC)  # next day 12:00 Moscow = 09:00 UTC
+        assert "Europe/Moscow" in desc
+
+    def test_weekday_in_utc3(self):
+        """
+        Weekday scheduling should respect timezone.
+        """
+        from zoneinfo import ZoneInfo
+        tz = ZoneInfo("Europe/Moscow")
+        from_dt = datetime.datetime(2025, 1, 7, 22, 0, tzinfo=UTC)  # Tuesday 22:00 UTC = Wednesday 01:00 Moscow
+        dt, desc = parse_schedule("every wednesday at 10:00", from_dt=from_dt, tz=tz)
+        # Wednesday 10:00 Moscow = Wednesday 07:00 UTC
+        # from_dt is already Wednesday 01:00 Moscow, so 10:00 is still ahead today
+        assert dt.weekday() == 2  # Wednesday UTC
+        assert dt.hour == 7  # 10:00 Moscow = 07:00 UTC
+        assert "Europe/Moscow" in desc
+
+    def test_utc_no_suffix(self):
+        """UTC timezone → no suffix in human_desc."""
+        dt, desc = parse_schedule("daily at 09:00", from_dt=MONDAY)
+        assert "UTC" not in desc or desc == "Daily at 09:00"
+        # More precise check: no parenthetical
+        assert "(" not in desc
+
+    def test_default_tz_utc(self):
+        """Without TZ env, default is UTC."""
+        import os
+        os.environ.pop("TZ", None)
+        from supervisor.cron import _get_default_tz
+        import importlib, supervisor.cron
+        importlib.reload(supervisor.cron)
+        # Re-import to get fresh version
+        from supervisor.cron import _get_default_tz as get_tz
+        result = get_tz()
+        assert result == datetime.timezone.utc or str(result) == "UTC"
+
+    def test_tz_env_sets_timezone(self, monkeypatch):
+        """TZ env var is respected."""
+        monkeypatch.setenv("TZ", "Europe/Moscow")
+        from supervisor.cron import _get_default_tz
+        import importlib, supervisor.cron
+        importlib.reload(supervisor.cron)
+        from supervisor.cron import _get_default_tz as get_tz
+        tz = get_tz()
+        from zoneinfo import ZoneInfo
+        assert str(tz) == "Europe/Moscow"

@@ -215,6 +215,14 @@ Full text: [BIBLE.md](BIBLE.md)
 
 ## Changelog
 
+## v1.1.1 — 2026-03-19 — Timezone Support for Cron Scheduler
+- `supervisor/cron.py`: all time-of-day schedules now respect the `TZ` environment variable
+- `_get_default_tz()`: reads `TZ` env var, falls back to UTC
+- `parse_schedule()` accepts an explicit `tz` parameter
+- `human_desc` now shows timezone in parentheses when non-UTC, e.g. "Daily at 09:00 (Europe/Moscow)"
+- Job dict stores `"timezone"` field for persistence across restarts
+- 6 new timezone-aware tests added to `tests/test_cron.py`
+
 - `v1.1.0` — 2026-03-19 — Recurring task scheduler (cron). New tools: `schedule_cron`, `list_cron`, `delete_cron`. Supports expressions like "every monday at 09:00", "daily at 08:00", "every 2 hours".
 
 ### v1.0.0 — 2026-03-19 — Initial Boot
