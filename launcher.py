@@ -604,6 +604,23 @@ while True:
                     if b64:
                         image_data = (b64, mime, caption)
 
+        # Handle voice messages — transcribe via Whisper
+        voice = msg.get("voice") or msg.get("audio")
+        if voice and not text:
+            file_id = voice.get("file_id")
+            if file_id:
+                from ouro.voice import transcribe_voice
+                audio_bytes, ext = TG.download_file_bytes(file_id)
+                if audio_bytes:
+                    transcribed = transcribe_voice(audio_bytes, ext)
+                    if transcribed:
+                        text = transcribed
+                        log.info("Voice message transcribed: %r", text[:80])
+                    else:
+                        text = "[голосовое сообщение — не удалось распознать]"
+                else:
+                    text = "[голосовое сообщение — не удалось скачать]"
+
         st = load_state()
         if st.get("owner_id") is None:
             st["owner_id"] = user_id
