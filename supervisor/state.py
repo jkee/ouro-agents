@@ -145,6 +145,7 @@ def ensure_state_defaults(st: Dict[str, Any]) -> Dict[str, Any]:
     st.setdefault("initialized", False)
     st.setdefault("arch_review_index", 0)
     st.setdefault("arch_review_last_at", "")
+    st.setdefault("launched_at", "")
     for legacy_key in ("approvals", "idle_cursor", "idle_stats", "last_idle_task_at",
                         "last_auto_review_at", "last_review_task_id", "session_daily_snapshot",
                         "session_total_snapshot", "session_spent_snapshot",

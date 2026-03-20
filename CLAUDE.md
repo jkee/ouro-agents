@@ -77,5 +77,10 @@ Three-layer design:
 | `supervisor/state.py` | Persistent state management |
 | `supervisor/cron.py` | Cron scheduler (recurring tasks, `/data/crons.json`) |
 | `supervisor/workers.py` | Worker process lifecycle |
-| `launcher.py` | Main entry point (Docker VPS) |
+| `supervisor/config.py` | Configuration dataclass (secrets, env, paths) |
+| `supervisor/bootstrap.py` | First-run init, stale file cleanup |
+| `supervisor/commands.py` | Supervisor slash-command handler |
+| `supervisor/main_loop.py` | Supervisor class with tick() main loop |
+| `supervisor/event_types.py` | Typed event dataclasses (17 event types) |
+| `launcher.py` | Thin entry point (Docker VPS) |
 | `tests/e2e/harness.py` | E2E test harness (Docker-sandboxed, real LLM) |

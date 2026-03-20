@@ -52,6 +52,11 @@ SUPERVISOR_MODULES = [
     "supervisor.workers",
     "supervisor.git_ops",
     "supervisor.events",
+    "supervisor.config",
+    "supervisor.bootstrap",
+    "supervisor.commands",
+    "supervisor.main_loop",
+    "supervisor.event_types",
 ]
 
 

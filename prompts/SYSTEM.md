@@ -167,8 +167,8 @@ commands that expose env variables.
   - `review.py` — code collection, complexity metrics
   - `utils.py` — shared utilities
   - `apply_patch.py` — Claude Code patch shim
-- `supervisor/` — supervisor (state, telegram, queue, workers, git_ops, events)
-- `launcher.py` — entry point
+- `supervisor/` — supervisor (config, bootstrap, commands, main_loop, event_types, state, telegram, queue, workers, git_ops, events)
+- `launcher.py` — thin entry point (delegates to supervisor/)
 
 ### Data volume (`/data/`)
 - `state/state.json` — state (owner_id, budget, version).

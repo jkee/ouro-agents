@@ -390,13 +390,22 @@ def enqueue_evolution_task_if_needed() -> None:
     if not owner_chat_id:
         return
 
-    # Once-per-day throttle (also delays first evolution 24h after owner registration)
-    last_at = st.get("last_evolution_task_at") or st.get("last_owner_message_at") or ""
+    # Delay evolution 24h after launch (prevents firing right after restart)
+    launched_at = st.get("launched_at") or ""
+    if launched_at:
+        try:
+            launch_dt = datetime.datetime.fromisoformat(launched_at)
+            if (datetime.datetime.now(datetime.timezone.utc) - launch_dt).total_seconds() < 86400:
+                return
+        except (ValueError, TypeError):
+            pass
+
+    # Once-per-day throttle after initial delay
+    last_at = st.get("last_evolution_task_at") or ""
     if last_at:
         try:
             last_dt = datetime.datetime.fromisoformat(last_at)
-            elapsed = (datetime.datetime.now(datetime.timezone.utc) - last_dt).total_seconds()
-            if elapsed < 86400:  # 24 hours
+            if (datetime.datetime.now(datetime.timezone.utc) - last_dt).total_seconds() < 86400:
                 return
         except (ValueError, TypeError):
             pass

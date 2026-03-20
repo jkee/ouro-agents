@@ -511,6 +511,9 @@ def assign_tasks() -> None:
 # Health + crash storm
 # ---------------------------------------------------------------------------
 
+_CRASH_REQUEUE_MAX_ATTEMPTS = 3
+
+
 def ensure_workers_healthy() -> None:
     from supervisor import queue
     # Grace period: skip health check right after spawn — workers need time to initialize
@@ -533,7 +536,42 @@ def ensure_workers_healthy() -> None:
                     meta = RUNNING.pop(w.busy_task_id) or {}
                     task = meta.get("task") if isinstance(meta, dict) else None
                     if isinstance(task, dict):
-                        queue.enqueue_task(task, front=True)
+                        attempt = int(task.get("_attempt") or 1)
+                        if attempt < _CRASH_REQUEUE_MAX_ATTEMPTS:
+                            retried = dict(task)
+                            retried["_attempt"] = attempt + 1
+                            queue.enqueue_task(retried, front=True)
+                            append_jsonl(
+                                DRIVE_ROOT / "logs" / "supervisor.jsonl",
+                                {
+                                    "ts": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                                    "type": "crash_requeue",
+                                    "task_id": task.get("id"),
+                                    "attempt": attempt + 1,
+                                    "max": _CRASH_REQUEUE_MAX_ATTEMPTS,
+                                },
+                            )
+                        else:
+                            # Max attempts exhausted — discard task and notify owner
+                            append_jsonl(
+                                DRIVE_ROOT / "logs" / "supervisor.jsonl",
+                                {
+                                    "ts": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                                    "type": "crash_requeue_exhausted",
+                                    "task_id": task.get("id"),
+                                    "attempt": attempt,
+                                    "max": _CRASH_REQUEUE_MAX_ATTEMPTS,
+                                },
+                            )
+                            try:
+                                st = load_state()
+                                if st.get("owner_chat_id"):
+                                    send_with_budget(
+                                        int(st["owner_chat_id"]),
+                                        f"\U0001f6d1 Task {task.get('id')} discarded after {attempt} crash retries.",
+                                    )
+                            except Exception:
+                                log.debug("Failed to notify owner about discarded task", exc_info=True)
             respawn_worker(wid)
             queue.persist_queue_snapshot(reason="worker_respawn_after_crash")
 

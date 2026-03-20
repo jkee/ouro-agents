@@ -39,7 +39,7 @@ Four execution contexts, each with a distinct role:
 
 **Main worker** — the workhorse. Handles everything the user asks for: tasks, code edits, reviews, subtasks. Up to `MAX_WORKERS` (5) parallel processes. Medium reasoning effort for regular tasks, high for reviews.
 
-**Direct chat** — fast path for conversation. Runs in a daemon thread (not a worker process). Messages are queued in `_pending_messages` and dispatched one at a time when the agent is free. Same capabilities as main worker, just no queue delay.
+**Direct chat** — fast path for conversation. Runs in a daemon thread (not a worker process). Messages are queued in `Supervisor._pending_messages` and dispatched one at a time when the agent is free. Same capabilities as main worker, just no queue delay.
 
 **Consciousness** — the night watchman. Daemon thread that wakes periodically to check system health, update memory, notice loose ends, and schedule maintenance. Runs on a light model with limited tools (no code editing, no shell). Pauses when a main task is running. Budget capped at 10%.
 
@@ -51,16 +51,44 @@ Four execution contexts, each with a distinct role:
 
 Process management, Telegram interface, task lifecycle, state persistence, git operations.
 
-### launcher.py (~759 lines)
+### launcher.py (~260 lines)
 
-Main entry point. Runs the boot sequence, then enters an infinite main loop:
+Thin entry point. Loads config, runs bootstrap, creates Supervisor, enters main loop. All heavy logic is in the supervisor/ package.
 
-- **Boot**: load env → init state → init Telegram → git bootstrap → safe_restart → first-run init → spawn workers → restore queue → auto-resume → start consciousness → main loop.
-- **Main loop**: adaptive Telegram polling (fast when active, 10s when idle) → classify as supervisor command or conversation → queue all messages in `_pending_messages` → dispatch one at a time when agent is free.
-- **Supervisor commands**: `/status`, `/break`, `/panic`, `/restart`, `/review`, `/evolve`, `/no-approve`, `/bg`, `/budget`, `/rollback`.
+- **Boot**: load .env → Config.from_env() → init modules → git bootstrap → first-run init → spawn workers → start consciousness → Supervisor.run().
 - **Chat watchdog**: monitors direct-chat thread for hangs, enforces timeouts.
 
-### supervisor/workers.py (~540 lines)
+### supervisor/config.py (~168 lines)
+
+Configuration dataclass. Reads secrets and env vars, exports to os.environ for child processes.
+
+- `Config.from_env()` — builds config from environment.
+- `Config.export_to_env()` — writes config back to os.environ.
+- `Config.ensure_directories()` — creates required /data/ subdirectories.
+
+### supervisor/bootstrap.py (~90 lines)
+
+First-run initialization and stale file cleanup. Extracted from launcher.py.
+
+- `first_run_init()` — Bible §18: improvements-log, find-skills skill, commit+push.
+- `clean_stale_owner_mailbox()` — clears leftover mailbox files from previous session.
+
+### supervisor/commands.py (~175 lines)
+
+Supervisor slash-command handler. All `/command` logic in one place.
+
+- `handle_supervisor_command()` — dispatches `/panic`, `/restart`, `/status`, `/review`, `/evolve`, `/bg`, `/break`, `/budget`, `/rollback`, `/no-approve`.
+- Returns True (terminal), string (dual-path note for LLM), or "" (not a command).
+
+### supervisor/main_loop.py (~366 lines)
+
+Main loop as a `Supervisor` class with `tick()` method.
+
+- `Supervisor.tick()` — single iteration: drain events → enforce timeouts → check crons → assign tasks → poll Telegram → dispatch messages → diagnostics.
+- `Supervisor.run()` — calls tick() in a loop forever.
+- Encapsulates mutable state: offset, pending_messages, timestamps.
+
+### supervisor/workers.py (~578 lines)
 
 Worker pool management. Up to `MAX_WORKERS` (default 5) processes.
 
@@ -77,7 +105,7 @@ SSOT for persistent state. File: `/data/state/state.json`.
 - **Atomic writes**: temp file → `os.replace()` + fsync. No corruption on crash.
 - **File locks**: `/data/locks/state.lock`, 4s timeout, stale detection at 90s.
 - **Budget tracking**: local accumulation per LLM call + periodic OpenRouter ground-truth sync (every 10 calls).
-- **Key fields**: `owner_id`, `spent_usd`, `spent_tokens_*`, `openrouter_limit_remaining`, `current_branch`, `no_approve_mode`, `evolution_mode_enabled`, `initialized`.
+- **Key fields**: `owner_id`, `spent_usd`, `spent_tokens_*`, `openrouter_limit_remaining`, `current_branch`, `no_approve_mode`, `evolution_mode_enabled`, `initialized`, `launched_at`.
 
 ### supervisor/telegram.py (~591 lines)
 
@@ -100,17 +128,17 @@ Repository management and safe code updates.
 - Rescue snapshots: backs up dirty files + git state to `/data/archive/` before risky operations.
 - `checkout_and_reset()` — branch switching with hard reset.
 
-### supervisor/queue.py (~421 lines)
+### supervisor/queue.py (~441 lines)
 
 Priority task queue with timeout enforcement.
 
 - **Priority**: task/review = 0 (highest), evolution = 1, other = 2.
 - **Timeouts**: soft (600s, sends warning to user), hard (1800s, kills worker and respawns).
 - **Heartbeat staleness**: 120s with no progress update = presumed dead.
-- **Evolution scheduling**: auto-enqueues evolution tasks if enabled + budget available.
+- **Evolution scheduling**: auto-enqueues evolution tasks if enabled + budget available. 24h cooldown after launch and between cycles.
 - **Persistence**: snapshots to `/data/state/queue_snapshot.json` for restart recovery (max 15 min staleness).
 
-### supervisor/cron.py (~230 lines)
+### supervisor/cron.py (~272 lines)
 
 Persistent cron scheduler. Stores recurring tasks in `/data/crons.json` with its own file lock.
 
@@ -120,7 +148,14 @@ Persistent cron scheduler. Stores recurring tasks in `/data/crons.json` with its
 - **Budget gate**: skips all crons if budget below `EVOLUTION_BUDGET_RESERVE`.
 - **Notifications**: optional per-cron `notify` flag sends Telegram message on fire.
 
-### supervisor/events.py (~570 lines)
+### supervisor/event_types.py (~243 lines)
+
+Typed event dataclasses for all 17 event types. Provides IDE autocomplete, field validation at creation time, and `to_dict()`/`from_dict()` serialization for multiprocessing.Queue.
+
+- Gradual migration: dispatch accepts both typed events and plain dicts.
+- `Event` union type for type hints.
+
+### supervisor/events.py (~623 lines)
 
 Event dispatcher. Workers communicate with supervisor exclusively through a multiprocessing Queue.
 
@@ -129,8 +164,8 @@ Event dispatcher. Workers communicate with supervisor exclusively through a mult
 - `llm_usage` — accumulates token costs, logs to events.jsonl.
 - `task_heartbeat` — updates last progress time in RUNNING.
 - `typing_start` — sends Telegram typing indicator.
-- `send_message` — routes message to Telegram with budget tracking. Deletes status message and replies to original message if status was tracked.
-- `task_done` — removes from RUNNING, updates evolution circuit breaker, stores task result. Cleans up orphaned status messages.
+- `send_message` — routes message to Telegram with budget tracking. Edit-in-place: final response replaces status message (no delete+send race). Falls back to delete+send if edit fails.
+- `task_done` — removes from RUNNING, updates evolution circuit breaker, stores task result. Edits orphaned status messages to "done" (not delete).
 
 ---
 
@@ -147,7 +182,7 @@ Per-worker orchestrator. Created fresh in each worker process.
 - Restart verification: after code push, verifies new worker loads correct git SHA.
 - Auto-rescue: detects and commits uncommitted changes on startup.
 
-### ouro/loop.py (~916 lines) — largest module
+### ouro/loop.py (~917 lines) — largest module
 
 Core LLM tool execution loop. This is my thinking-acting cycle.
 
@@ -158,7 +193,7 @@ Core LLM tool execution loop. This is my thinking-acting cycle.
 - **Tool result truncation**: hard cap at 15,000 chars per result.
 - **Reasoning effort**: normalized to {none, minimal, low, medium, high, xhigh} (Claude-specific).
 
-### ouro/llm.py (~290 lines)
+### ouro/llm.py (~429 lines)
 
 SSOT for all LLM API calls. Only module that talks to OpenRouter.
 
@@ -167,7 +202,7 @@ SSOT for all LLM API calls. Only module that talks to OpenRouter.
 - Usage tracking: accumulates tokens + cost across rounds.
 - **Default models**: main = `claude-sonnet-4.6`, code = `claude-opus-4.6`, light = `claude-haiku-4-5`.
 
-### ouro/context.py (~818 lines)
+### ouro/context.py (~814 lines)
 
 Builds the full LLM message array for each round.
 
@@ -193,7 +228,7 @@ Persistent memory file manager. All files under `/data/memory/`.
 - `chat_history()` — reads from `/data/logs/chat.jsonl` with search/offset support.
 - `read_jsonl_tail()` — reads last N entries from any JSONL log.
 
-### ouro/consciousness.py (~525 lines)
+### ouro/consciousness.py (~538 lines)
 
 Background thinking daemon. Runs between tasks in a daemon thread.
 
@@ -298,9 +333,9 @@ All persistent state lives on the `/data/` volume. No database — only files wi
 ### User Message → Response
 
 ```
-Telegram poll → launcher.py
-  → supervisor command?  → execute directly
-  → all messages         → append to _pending_messages queue
+Telegram poll → Supervisor.tick() (main_loop.py)
+  → supervisor command?  → commands.py handles directly
+  → all messages         → append to Supervisor._pending_messages
   → agent free?          → pop next, handle_chat_direct() in thread
   → queued task          → enqueue → assign to worker
 ```
@@ -314,7 +349,7 @@ worker_main() → Agent.handle_task()
   → loop.run_llm_loop()
     → [LLM call → parse tool calls → status_update (round N · tool names) → execute tools]* (up to 200 rounds)
     → emit events (llm_usage, task_heartbeat)
-  → send_message event → supervisor deletes "⏳", sends final result as reply
+  → send_message event → supervisor edits "⏳" with final result (edit-in-place)
   → task_done event → supervisor drains queue
 ```
 
@@ -346,18 +381,18 @@ sleep(_next_wakeup_sec, default 300s)
 
 | Step | Module | Action |
 |------|--------|--------|
-| 1 | launcher.py | Load `.env`, validate required secrets, set runtime config |
-| 2 | launcher.py | Create `/data/{state,logs,memory,index,locks,archive}` directories |
+| 1 | config.py | Load `.env`, validate required secrets, build `Config` dataclass |
+| 2 | config.py | Export config to `os.environ`, create `/data/` directories |
 | 3 | state.py | Load or create `/data/state/state.json` |
 | 4 | telegram.py | Verify bot token, get bot info |
 | 5 | git_ops.py | Clone or fetch repo, checkout dev branch |
 | 6 | git_ops.py | Pull latest code, sync dependencies if requirements.txt changed |
-| 7 | launcher.py | First-run init (if needed): ensure improvements-log/, install skills |
+| 7 | bootstrap.py | First-run init (if needed): ensure improvements-log/, install skills |
 | 8 | workers.py | Spawn worker pool (up to MAX_WORKERS processes) |
 | 9 | queue.py | Restore queue_snapshot.json (if <15 min old) |
 | 10 | workers.py | Auto-resume interrupted RUNNING tasks |
 | 11 | consciousness.py | Start background thinking daemon thread |
-| 12 | launcher.py | Enter main loop: poll Telegram + drain events + assign tasks |
+| 12 | main_loop.py | Enter `Supervisor.run()`: poll Telegram + drain events + assign tasks |
 
 ---
 
@@ -398,22 +433,28 @@ Reference table for complexity tracking (BIBLE.md §8: keep under 2000 lines).
 
 | Module | Lines | Status |
 |--------|-------|--------|
-| ouro/loop.py | ~916 | OK |
-| ouro/context.py | ~818 | OK |
-| launcher.py | ~759 | OK |
+| ouro/loop.py | ~917 | OK |
+| ouro/context.py | ~814 | OK |
 | ouro/agent.py | ~661 | OK |
-| supervisor/state.py | ~600 | OK |
-| supervisor/workers.py | ~540 | OK |
-| ouro/consciousness.py | ~525 | OK |
+| supervisor/events.py | ~623 | OK |
+| supervisor/state.py | ~601 | OK |
 | supervisor/telegram.py | ~591 | OK |
-| supervisor/events.py | ~570 | OK |
+| supervisor/workers.py | ~578 | OK |
+| ouro/consciousness.py | ~538 | OK |
 | supervisor/git_ops.py | ~465 | OK |
-| supervisor/queue.py | ~421 | OK |
-| supervisor/cron.py | ~230 | OK |
-| ouro/tools/ (18 modules) | ~4355 | OK (largest: evolution_stats.py 433) |
+| supervisor/queue.py | ~441 | OK |
+| ouro/llm.py | ~429 | OK |
+| supervisor/main_loop.py | ~366 | OK |
+| supervisor/cron.py | ~272 | OK |
 | ouro/memory.py | ~269 | OK |
-| ouro/llm.py | ~335 | OK |
+| launcher.py | ~262 | OK |
+| supervisor/event_types.py | ~243 | OK |
+| ouro/review.py | ~200 | OK |
 | ouro/tools/registry.py | ~195 | OK |
+| supervisor/commands.py | ~175 | OK |
+| supervisor/config.py | ~168 | OK |
+| supervisor/bootstrap.py | ~89 | OK |
+| ouro/tools/ (18 modules) | ~4355 | OK (largest: evolution_stats.py 433) |
 
 ---
 

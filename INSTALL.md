@@ -141,7 +141,7 @@ Open the Telegram bot you created and send any message. The first person to mess
 
 ## What Happens on First Run
 
-The launcher (`launcher.py`) automatically handles first-run initialization:
+The launcher automatically handles first-run initialization (via `supervisor/bootstrap.py`):
 
 1. Validates all API keys and connections
 2. Initializes git — creates a dev branch from `main`, pushes to your fork
@@ -243,7 +243,7 @@ docker compose up -d --build
 
 ### What Happens on Clean Relaunch
 
-1. Launcher creates `/data/` subdirectories (state, logs, memory, index, locks, archive)
+1. Config creates `/data/` subdirectories (state, logs, memory, index, locks, archive)
 2. Fresh `state.json` is created with `initialized: false`
 3. Git fetches origin, finds dev branch missing, creates it from `main`, pushes
 4. First-run init: creates `improvements-log/`, installs `find-skills` skill, commits and pushes

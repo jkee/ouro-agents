@@ -5,7 +5,7 @@
 
 A self-developing AI agent that writes its own code, improves itself, and maintains persistent identity across restarts.
 
-**Template version:** 1.6.0
+**Template version:** 1.7.0
 
 ---
 
@@ -29,12 +29,17 @@ Most AI agents execute tasks. Ouro **develops itself.**
 Telegram --> launcher.py
                 |
             supervisor/              (process management)
+              config.py             -- Config dataclass, secrets
+              bootstrap.py          -- first-run init
+              commands.py           -- slash commands
+              main_loop.py          -- Supervisor class, tick()
               state.py              -- state, budget tracking
               telegram.py           -- Telegram client
               queue.py              -- task queue, scheduling
               workers.py            -- worker lifecycle
               git_ops.py            -- git operations
               events.py             -- event dispatch
+              event_types.py        -- typed event dataclasses
                 |
             ouro/               (agent core)
               agent.py              -- thin orchestrator
