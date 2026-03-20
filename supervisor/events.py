@@ -33,6 +33,7 @@ log = logging.getLogger(__name__)
 _STATUS_MESSAGES: Dict[str, Dict] = {}
 # {task_id: {chat_id, status_msg_id, original_msg_id, last_edit_ts, last_text}}
 _SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+_STATUS_DEBOUNCE_S = 1.0  # min interval between status message edits
 
 
 def _handle_status_start(evt: Dict[str, Any], ctx: Any) -> None:
@@ -80,7 +81,7 @@ def _handle_status_update(evt: Dict[str, Any], ctx: Any) -> None:
     safe_body = text[:180].replace("_", "\\_") if text else "thinking…"
     new_text = f"{spinner} _{safe_body}_ · {counter}" if text else spinner
     now = time.time()
-    if now - status["last_edit_ts"] < 1.0:
+    if now - status["last_edit_ts"] < _STATUS_DEBOUNCE_S:
         status["last_text"] = new_text  # store for lazy flush
         return
     try:
@@ -88,7 +89,7 @@ def _handle_status_update(evt: Dict[str, Any], ctx: Any) -> None:
         status["last_edit_ts"] = now
         status["last_text"] = new_text
         if err == "rate_limited":
-            status["last_edit_ts"] = now + 2.0  # back off via debounce
+            status["last_edit_ts"] = now + 2 * _STATUS_DEBOUNCE_S  # back off
     except Exception:
         log.debug("Failed to edit status message", exc_info=True)
 
@@ -97,17 +98,17 @@ def tick_status_animations(ctx: Any) -> None:
     """Rotate braille spinner and resend typing indicator independently of agent events.
 
     Called from the supervisor tick() loop (~every 0.1s). Debounced to at most
-    one edit per 1.0s per status message. Frame is time-based (0.2s/frame).
+    one edit per _STATUS_DEBOUNCE_S per status message. One frame per tick.
     """
     if not _STATUS_MESSAGES:
         return
     now = time.time()
     for task_id, status in list(_STATUS_MESSAGES.items()):
         elapsed = now - status["last_edit_ts"]
-        if elapsed < 1.0:
+        if elapsed < _STATUS_DEBOUNCE_S:
             continue
-        # Advance frame based on elapsed time (~0.2s per frame)
-        status["frame"] = status.get("frame", 0) + max(1, int(elapsed / 0.2))
+        # Advance one frame per tick (smooth rotation at 1s debounce)
+        status["frame"] = status.get("frame", 0) + 1
         frame = status["frame"]
         spinner = _SPINNER_FRAMES[frame % len(_SPINNER_FRAMES)]
         counter = status.get("counter", 0)
@@ -120,11 +121,11 @@ def tick_status_animations(ctx: Any) -> None:
             ok, err = ctx.TG.edit_message_text(status["chat_id"], status["status_msg_id"], new_text, parse_mode="Markdown")
             status["last_text"] = new_text
             if err == "rate_limited":
-                status["last_edit_ts"] = now + 2.0  # back off via debounce
+                status["last_edit_ts"] = now + 2 * _STATUS_DEBOUNCE_S  # back off
         except Exception:
             log.debug("tick_status_animations: edit failed for task %s", task_id, exc_info=True)
-        # Resend typing indicator every ~5 seconds (~25 frames × 0.2s = 5s)
-        if frame % 25 == 0:
+        # Resend typing indicator every ~5 ticks (~5s at current debounce)
+        if frame % 5 == 0:
             try:
                 ctx.TG.send_chat_action(status["chat_id"], "typing")
             except Exception:
