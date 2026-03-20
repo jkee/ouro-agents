@@ -130,19 +130,34 @@ def _check_uncommitted_changes(repo_dir: pathlib.Path) -> str:
             timeout=5,
         )
         if status_res.returncode == 0 and status_res.stdout.strip():
-            diff_res = subprocess.run(
+            stat_res = subprocess.run(
                 ["git", "diff", "--stat"],
                 cwd=repo_dir,
                 capture_output=True,
                 text=True,
                 timeout=5,
             )
-            if diff_res.returncode == 0 and diff_res.stdout.strip():
-                return (
-                    f"\n\n⚠️ UNCOMMITTED CHANGES detected after Claude Code edit:\n"
-                    f"{diff_res.stdout.strip()}\n"
-                    f"Remember to run git_status and repo_commit_push!"
-                )
+            stat_text = stat_res.stdout.strip() if stat_res.returncode == 0 else ""
+
+            diff_res = subprocess.run(
+                ["git", "diff"],
+                cwd=repo_dir,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            diff_text = diff_res.stdout.strip() if diff_res.returncode == 0 else ""
+            if len(diff_text) > 8000:
+                diff_text = diff_text[:8000] + "\n...(diff truncated at 8000 chars)..."
+
+            if stat_text or diff_text:
+                parts = ["\n\n⚠️ UNCOMMITTED CHANGES detected after Claude Code edit:"]
+                if stat_text:
+                    parts.append(stat_text)
+                if diff_text:
+                    parts.append(f"--- DIFF ---\n{diff_text}")
+                parts.append("Remember to run git_status and repo_commit_push!")
+                return "\n".join(parts)
     except Exception as e:
         log.debug("Failed to check git status after claude_code_edit: %s", e, exc_info=True)
     return ""
@@ -169,30 +184,6 @@ def _parse_claude_output(stdout: str, ctx: ToolContext) -> str:
     except Exception:
         log.debug("Failed to parse claude_code_edit JSON output", exc_info=True)
         return stdout
-
-
-def _run_pytest(repo_dir: pathlib.Path) -> str:
-    """Run pytest -q --tb=short after an edit; returns summary or empty string if pytest unavailable."""
-    if not shutil.which("pytest"):
-        return ""
-    try:
-        res = subprocess.run(
-            ["pytest", "-q", "--tb=short"],
-            cwd=str(repo_dir),
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
-        output = (res.stdout + ("\n" + res.stderr if res.stderr.strip() else "")).strip()
-        if res.returncode == 0:
-            return f"\n\n--- pytest ---\n{output}"
-        else:
-            return f"\n\n⚠️ PYTEST FAILED (exit={res.returncode}):\n{output}"
-    except subprocess.TimeoutExpired:
-        return "\n\n⚠️ PYTEST TIMEOUT: exceeded 120s."
-    except Exception as e:
-        log.debug("Failed to run pytest after claude_code_edit: %s", e, exc_info=True)
-        return ""
 
 
 def _claude_code_edit(ctx: ToolContext, prompt: str, cwd: str = "") -> str:
@@ -249,7 +240,7 @@ def _claude_code_edit(ctx: ToolContext, prompt: str, cwd: str = "") -> str:
         _release_git_lock(lock)
 
     result = _parse_claude_output(stdout, ctx)
-    result += _run_pytest(ctx.repo_dir)
+    result += "\n\nTests will run automatically on commit+push."
     return result
 
 

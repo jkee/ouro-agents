@@ -33,7 +33,7 @@ Three-layer design:
 
 **Layer 2 — Agent Core** (`ouro/`): Per-worker agent instance. `agent.py` orchestrates message->context->tools. `loop.py` is the core LLM tool execution loop. `llm.py` is the sole OpenRouter API client. `context.py` assembles LLM context. `memory.py` manages scratchpad, identity, user context, and chat history. `consciousness.py` runs background thinking between tasks.
 
-**Layer 3 — Tools** (`ouro/tools/`): Plugin registry with auto-discovery. Each module exports `get_tools()` returning `List[ToolEntry]`. `registry.py` is the SSOT — it collects all tools via `pkgutil.iter_modules()`. ~57 tools total. Every tool receives a `ToolContext` dataclass with repo dir, Drive root, task ID, event queue, browser state.
+**Layer 3 — Tools** (`ouro/tools/`): Plugin registry with auto-discovery. Each module exports `get_tools()` returning `List[ToolEntry]`. `registry.py` is the SSOT — it collects all tools via `pkgutil.iter_modules()`. ~58 tools total. Every tool receives a `ToolContext` dataclass with repo dir, Drive root, task ID, event queue, browser state.
 
 **Agent Skills** (`.agents/skills/`): Pre-packaged instruction sets in the open Agent Skills format (skills.sh). Stored in the repo, versioned in git. Progressive disclosure: Tier 1 catalog in LLM context, Tier 2 full instructions via `skill_activate`. The `find-skills` skill is pre-installed for discovering new skills.
 

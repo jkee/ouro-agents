@@ -92,7 +92,7 @@ def test_tool_set_matches(registry):
 EXPECTED_TOOLS = [
     "repo_read", "repo_list", "repo_commit_push",
     "drive_read", "drive_write", "drive_list",
-    "git_status", "git_diff",
+    "git_status", "git_diff", "git_rollback",
     "run_shell", "claude_code_edit",
     "browse_page", "browser_action",
     "web_search",

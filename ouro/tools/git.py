@@ -1,10 +1,11 @@
-"""Git tools: repo_commit_push, git_status, git_diff."""
+"""Git tools: repo_commit_push, git_status, git_diff, git_rollback."""
 
 from __future__ import annotations
 
 import logging
 import os
 import pathlib
+import shutil
 import subprocess
 import time
 from typing import Any, Dict, List, Optional
@@ -56,7 +57,7 @@ def _release_git_lock(lock_path: pathlib.Path) -> None:
 MAX_TEST_OUTPUT = 8000
 
 def _run_pre_push_tests(ctx: ToolContext) -> Optional[str]:
-    """Run pre-push tests if enabled. Returns None if tests pass, error string if they fail."""
+    """Run ruff lint + pytest before push. Returns None if all pass, error string if they fail."""
     # Guard against ctx=None
     if ctx is None:
         log.warning("_run_pre_push_tests called with ctx=None, skipping tests")
@@ -65,17 +66,38 @@ def _run_pre_push_tests(ctx: ToolContext) -> Optional[str]:
     if os.environ.get("OURO_PRE_PUSH_TESTS", "1") != "1":
         return None
 
+    # --- Ruff lint gate ---
+    if shutil.which("ruff"):
+        try:
+            ruff_result = subprocess.run(
+                ["ruff", "check", ".", "--no-fix", "-q"],
+                cwd=ctx.repo_dir,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if ruff_result.returncode != 0:
+                output = ruff_result.stdout + ruff_result.stderr
+                if len(output) > MAX_TEST_OUTPUT:
+                    output = output[:MAX_TEST_OUTPUT] + "\n...(truncated)..."
+                return f"⚠️ RUFF_LINT_FAILED:\n{output}"
+        except subprocess.TimeoutExpired:
+            return "⚠️ RUFF_LINT_ERROR: ruff timed out after 10 seconds"
+        except Exception as e:
+            log.warning("Ruff lint check failed with exception: %s", e, exc_info=True)
+
+    # --- Pytest gate ---
     tests_dir = pathlib.Path(ctx.repo_dir) / "tests"
     if not tests_dir.exists():
         return None
 
     try:
         result = subprocess.run(
-            ["pytest", "tests/", "-q", "--tb=line", "--no-header"],
+            ["pytest", "tests/", "-q", "--tb=short"],
             cwd=ctx.repo_dir,
             capture_output=True,
             text=True,
-            timeout=30
+            timeout=60,
         )
         if result.returncode == 0:
             return None
@@ -87,13 +109,13 @@ def _run_pre_push_tests(ctx: ToolContext) -> Optional[str]:
         return output
 
     except subprocess.TimeoutExpired:
-        return "⚠️ PRE_PUSH_TEST_ERROR: pytest timed out after 30 seconds"
+        return "⚠️ PRE_PUSH_TEST_ERROR: pytest timed out after 60 seconds"
 
     except FileNotFoundError:
         return "⚠️ PRE_PUSH_TEST_ERROR: pytest not installed or not found in PATH"
 
     except Exception as e:
-        log.warning(f"Pre-push tests failed with exception: {e}", exc_info=True)
+        log.warning("Pre-push tests failed with exception: %s", e, exc_info=True)
         return f"⚠️ PRE_PUSH_TEST_ERROR: Unexpected error running tests: {e}"
 
 
@@ -156,7 +178,18 @@ def _repo_commit_push(ctx: ToolContext, commit_message: str, paths: Optional[Lis
 
         push_error = _git_push_with_tests(ctx)
         if push_error:
-            return push_error
+            # Auto-revert the commit but preserve working tree changes
+            try:
+                run_cmd(["git", "reset", "--soft", "HEAD~1"], cwd=ctx.repo_dir)
+                # Extract just the test output, not the stale "committed locally" message
+                test_output = push_error.split("\n", 1)[1] if "\n" in push_error else push_error
+                return (
+                    f"⚠️ PRE_PUSH_TESTS_FAILED. Commit reverted (changes preserved in working tree). "
+                    f"Fix issues and retry repo_commit_push.\n{test_output}"
+                )
+            except Exception as e:
+                log.warning("Failed to auto-revert commit after test failure: %s", e)
+                return push_error
     finally:
         _release_git_lock(lock)
     ctx.last_push_succeeded = True
@@ -190,6 +223,55 @@ def _git_diff(ctx: ToolContext, staged: bool = False) -> str:
         return f"⚠️ GIT_ERROR: {e}"
 
 
+def _git_rollback(ctx: ToolContext, target: str = "last_commit") -> str:
+    """Roll back to a safe state. Modes: 'last_commit' (revert HEAD), 'stable' (reset to latest stable tag)."""
+    target = str(target or "last_commit").strip().lower()
+    if target not in ("last_commit", "stable"):
+        return "⚠️ ERROR: target must be 'last_commit' or 'stable'."
+
+    lock = _acquire_git_lock(ctx)
+    try:
+        # Save rescue diff before rollback
+        try:
+            rescue_dir = ctx.drive_path("archive") / "rescue"
+            rescue_dir.mkdir(parents=True, exist_ok=True)
+            diff_out = run_cmd(["git", "diff", "HEAD"], cwd=ctx.repo_dir)
+            if diff_out.strip():
+                ts = utc_now_iso().replace(":", "-").replace("+", "_")
+                (rescue_dir / f"rescue_{ts}.diff").write_text(diff_out, encoding="utf-8")
+        except Exception:
+            log.debug("Failed to save rescue diff before rollback", exc_info=True)
+
+        try:
+            run_cmd(["git", "checkout", ctx.branch_dev], cwd=ctx.repo_dir)
+        except Exception as e:
+            return f"⚠️ GIT_ERROR (checkout): {e}"
+
+        if target == "last_commit":
+            try:
+                run_cmd(["git", "revert", "HEAD", "--no-edit"], cwd=ctx.repo_dir)
+                return "OK: Reverted last commit (created revert commit). Push with run_shell([\"git\", \"push\", \"origin\", \"<branch>\"])."
+            except Exception as e:
+                return f"⚠️ GIT_ERROR (revert): {e}"
+
+        # target == "stable"
+        try:
+            tag_out = run_cmd(
+                ["git", "tag", "--sort=-creatordate", "--list", "stable-*"],
+                cwd=ctx.repo_dir,
+            )
+            tags = [t.strip() for t in tag_out.strip().split("\n") if t.strip()]
+            if not tags:
+                return "⚠️ NO_STABLE_TAG: no stable-* tags found. Cannot roll back to stable."
+            latest_tag = tags[0]
+            run_cmd(["git", "reset", "--hard", latest_tag], cwd=ctx.repo_dir)
+            return f"OK: Reset to stable tag '{latest_tag}'. Working tree matches stable state."
+        except Exception as e:
+            return f"⚠️ GIT_ERROR (reset to stable): {e}"
+    finally:
+        _release_git_lock(lock)
+
+
 def get_tools() -> List[ToolEntry]:
     return [
         ToolEntry("repo_commit_push", {
@@ -212,4 +294,12 @@ def get_tools() -> List[ToolEntry]:
                 "staged": {"type": "boolean", "default": False, "description": "If true, show staged changes (--staged)"},
             }, "required": []},
         }, _git_diff, is_code_tool=True),
+        ToolEntry("git_rollback", {
+            "name": "git_rollback",
+            "description": "Roll back code. target='last_commit' reverts HEAD (safe, creates revert commit). target='stable' resets to latest stable-* tag (destructive).",
+            "parameters": {"type": "object", "properties": {
+                "target": {"type": "string", "enum": ["last_commit", "stable"], "default": "last_commit",
+                           "description": "'last_commit' = git revert HEAD, 'stable' = git reset --hard to latest stable tag"},
+            }, "required": []},
+        }, _git_rollback, is_code_tool=True),
     ]

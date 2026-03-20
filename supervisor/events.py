@@ -45,7 +45,7 @@ def _handle_status_start(evt: Dict[str, Any], ctx: Any) -> None:
         return
     try:
         initial_text = "⏳ *thinking…*"
-        ok, err, sent_id = ctx.TG.send_message_reply(chat_id, initial_text, original_msg_id)
+        ok, err, sent_id = ctx.TG.send_message_reply(chat_id, initial_text, original_msg_id, parse_mode="Markdown")
         if ok and sent_id:
             _STATUS_MESSAGES[task_id] = {
                 "chat_id": chat_id,
@@ -80,7 +80,7 @@ def _handle_status_update(evt: Dict[str, Any], ctx: Any) -> None:
         status["last_text"] = new_text  # store for lazy flush
         return
     try:
-        ctx.TG.edit_message_text(status["chat_id"], status["status_msg_id"], new_text)
+        ctx.TG.edit_message_text(status["chat_id"], status["status_msg_id"], new_text, parse_mode="Markdown")
         status["last_edit_ts"] = now
         status["last_text"] = new_text
     except Exception:

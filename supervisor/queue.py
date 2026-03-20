@@ -346,9 +346,51 @@ def enforce_task_timeouts() -> None:
 # Evolution + review scheduling
 # ---------------------------------------------------------------------------
 
+def _read_recent_evolution_context(max_chars: int = 1000) -> str:
+    """Read recent evolution log entries for context. Graceful on failure."""
+    try:
+        evo_log = DRIVE_ROOT / "logs" / "evolution.jsonl"
+        if not evo_log.exists():
+            return ""
+        lines = evo_log.read_text(encoding="utf-8").strip().split("\n")
+        # Take last 3 entries
+        recent = []
+        for line in lines[-3:]:
+            try:
+                entry = json.loads(line)
+                title = entry.get("title", "?")
+                outcome = entry.get("outcome", entry.get("status", "?"))
+                lessons = entry.get("lessons_learned", "")
+                summary = f"- {title} [{outcome}]"
+                if lessons:
+                    summary += f" — {lessons}"
+                recent.append(summary)
+            except (json.JSONDecodeError, KeyError):
+                continue
+        if not recent:
+            return ""
+        text = "Recent cycles:\n" + "\n".join(recent)
+        if len(text) > max_chars:
+            text = text[:max_chars] + "..."
+        return text
+    except Exception:
+        log.debug("Failed to read evolution context", exc_info=True)
+        return ""
+
+
 def build_evolution_task_text(cycle: int) -> str:
-    """Build evolution task text. Minimal trigger — SYSTEM.md has the full instructions."""
-    return f"EVOLUTION #{cycle}"
+    """Build evolution task text with context from past cycles."""
+    st = load_state()
+    consecutive_failures = int(st.get("evolution_consecutive_failures") or 0)
+
+    parts = [f"EVOLUTION #{cycle}"]
+    if consecutive_failures > 0:
+        parts.append(f"⚠️ {consecutive_failures} consecutive failure(s) in previous cycles.")
+    context = _read_recent_evolution_context()
+    if context:
+        parts.append(context)
+    parts.append("Check knowledge base for lessons from past cycles before starting.")
+    return "\n".join(parts)
 
 
 def build_review_task_text(reason: str) -> str:
