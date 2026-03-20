@@ -1,4 +1,5 @@
 # Architecture
+*Last updated: 2026-03-20 — reviewed and confirmed current on first boot.*
 
 This is my technical self-knowledge. I maintain this file as part of every
 improvement cycle (BIBLE.md §8). It describes how I am built so I can navigate,
@@ -200,7 +201,7 @@ SSOT for all LLM API calls. Only module that talks to OpenRouter.
 - `chat()` — single LLM call with messages, tools, reasoning_effort.
 - `generate_image()` — image generation via OpenRouter (`modalities: ["image", "text"]`). Image returned in `message.images[0]`.
 - Usage tracking: accumulates tokens + cost across rounds.
-- **Default models**: main = `claude-sonnet-4.6`, code = `claude-opus-4.6`, light = `claude-haiku-4-5`.
+- **Default models**: main = `claude-sonnet-4.6`, code = `claude-opus-4.6`, light = `gemini-3-pro-preview`.
 
 ### ouro/context.py (~814 lines)
 
@@ -242,7 +243,7 @@ Background thinking daemon. Runs between tasks in a daemon thread.
 
 ## Layer 3 — Tools
 
-Plugin architecture with auto-discovery. ~58 tools across 17 modules.
+Plugin architecture with auto-discovery. ~58 tools across ~17 modules.
 
 ### Plugin System
 
