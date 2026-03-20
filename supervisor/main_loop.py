@@ -245,6 +245,16 @@ class Supervisor:
                 except Exception:
                     log.warning("Supervisor command handler error", exc_info=True)
 
+            # Transcribe voice messages
+            if not text and not image_data and msg.get("voice"):
+                voice_file_id = msg["voice"].get("file_id")
+                if voice_file_id:
+                    transcript = self.tg.transcribe_voice(voice_file_id)
+                    if transcript:
+                        text = transcript
+                    else:
+                        text = "[Voice message: transcription failed]"
+
             # All other messages -> queue for sequential processing
             if not text and not image_data:
                 text = _describe_unknown_content(msg)

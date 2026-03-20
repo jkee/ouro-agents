@@ -200,6 +200,93 @@ class TelegramClient:
                 time.sleep(0.8 * (attempt + 1))
         return False, last_err
 
+    def transcribe_voice(self, file_id: str) -> Optional[str]:
+        """Download a voice message from Telegram and transcribe it using OpenRouter.
+
+        Returns the transcription string, or None on failure.
+        """
+        import os
+        import base64
+
+        # Download the file
+        try:
+            r = requests.get(f"{self.base}/getFile", params={"file_id": file_id}, timeout=10)
+            r.raise_for_status()
+            data = r.json()
+            if not data.get("ok"):
+                log.warning("getFile failed for voice file_id=%s: %s", file_id, data)
+                return None
+            file_path = data["result"].get("file_path", "")
+            file_size = int(data["result"].get("file_size") or 0)
+            if file_size > 20_000_000:  # 20MB limit
+                log.warning("Voice file too large: %d bytes", file_size)
+                return None
+
+            download_url = f"https://api.telegram.org/file/bot{self._token}/{file_path}"
+            r2 = requests.get(download_url, timeout=60)
+            r2.raise_for_status()
+            audio_bytes = r2.content
+        except Exception:
+            log.warning("Failed to download voice file_id=%s", file_id, exc_info=True)
+            return None
+
+        # Determine audio format from file path extension
+        ext = file_path.rsplit(".", 1)[-1].lower() if "." in file_path else "ogg"
+        # Telegram voice messages are OGG/Opus
+        # OpenRouter gpt-4o-audio-preview supports: wav, mp3, ogg, flac, m4a, etc.
+
+        b64_audio = base64.b64encode(audio_bytes).decode("ascii")
+
+        # Call OpenRouter with gpt-4o-audio-preview
+        api_key = os.environ.get("OPENROUTER_API_KEY", "")
+        if not api_key:
+            log.warning("OPENROUTER_API_KEY not set, cannot transcribe voice")
+            return None
+
+        try:
+            resp = requests.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": "openai/gpt-4o-audio-preview",
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": "Transcribe this voice message exactly as spoken. Output only the transcription text, nothing else.",
+                                },
+                                {
+                                    "type": "input_audio",
+                                    "input_audio": {
+                                        "data": b64_audio,
+                                        "format": ext if ext in ("wav", "mp3", "ogg", "flac", "m4a", "aac", "webm") else "ogg",
+                                    },
+                                },
+                            ],
+                        }
+                    ],
+                    "max_tokens": 1000,
+                },
+                timeout=60,
+            )
+            resp.raise_for_status()
+            result = resp.json()
+            transcript = result["choices"][0]["message"]["content"]
+            if isinstance(transcript, list):
+                # Handle multi-part content
+                transcript = " ".join(
+                    part.get("text", "") for part in transcript if isinstance(part, dict)
+                )
+            return transcript.strip() if transcript else None
+        except Exception:
+            log.warning("Failed to transcribe voice via OpenRouter", exc_info=True)
+            return None
+
     def download_file_base64(self, file_id: str, max_bytes: int = 10_000_000) -> Tuple[Optional[str], str]:
         """Download a file from Telegram and return (base64_data, mime_type). Returns (None, "") on failure."""
         try:
