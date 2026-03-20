@@ -23,6 +23,39 @@ log = logging.getLogger(__name__)
 _ACTIVE_MODE_SEC: int = 300  # 5 min of activity = active polling mode
 
 
+def _describe_unknown_content(msg: dict) -> str:
+    """Build a text description for unsupported Telegram message content types."""
+    if msg.get("voice"):
+        dur = msg["voice"].get("duration", "?")
+        return f"[Voice message, duration: {dur}s]"
+    if msg.get("audio"):
+        a = msg["audio"]
+        name = a.get("title") or a.get("file_name") or "unknown"
+        return f"[Audio: {name}, duration: {a.get('duration', '?')}s]"
+    if msg.get("video"):
+        return f"[Video, duration: {msg['video'].get('duration', '?')}s]"
+    if msg.get("video_note"):
+        return f"[Video note, duration: {msg['video_note'].get('duration', '?')}s]"
+    if msg.get("sticker"):
+        emoji = msg["sticker"].get("emoji", "")
+        return f"[Sticker: {emoji}]"
+    if msg.get("animation"):
+        return "[GIF animation]"
+    if msg.get("document"):
+        d = msg["document"]
+        return f"[Document: {d.get('file_name', 'unknown')}, type: {d.get('mime_type', 'unknown')}]"
+    if msg.get("location"):
+        loc = msg["location"]
+        return f"[Location: {loc.get('latitude')}, {loc.get('longitude')}]"
+    if msg.get("contact"):
+        c = msg["contact"]
+        name = f"{c.get('first_name', '')} {c.get('last_name', '')}".strip()
+        return f"[Contact: {name}, {c.get('phone_number', '')}]"
+    if msg.get("poll"):
+        return f"[Poll: {msg['poll'].get('question', '')}]"
+    return "[Unknown message format]"
+
+
 class Supervisor:
     """Main supervisor loop — drains events, polls Telegram, dispatches tasks."""
 
@@ -183,7 +216,6 @@ class Supervisor:
 
             log_chat("in", chat_id, user_id, text)
             user_message_id = msg.get("message_id")
-            self.tg.set_reaction(chat_id, user_message_id)
             st["last_owner_message_at"] = now_iso
             self._last_message_ts = time.time()
             save_state(st)
@@ -223,7 +255,9 @@ class Supervisor:
 
             # All other messages -> queue for sequential processing
             if not text and not image_data:
-                continue
+                text = _describe_unknown_content(msg)
+                if not text:
+                    continue
 
             with self._pending_lock:
                 self._pending_messages.append((chat_id, text, image_data, user_message_id))

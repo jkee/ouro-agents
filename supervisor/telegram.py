@@ -104,24 +104,6 @@ class TelegramClient:
             log.debug("Failed to send chat action to chat_id=%d", chat_id, exc_info=True)
             return False
 
-    def set_reaction(self, chat_id: int, message_id: int, emoji: str = "👀") -> bool:
-        """Set a reaction on a message. Best-effort, no retries."""
-        try:
-            r = requests.post(
-                f"{self.base}/setMessageReaction",
-                json={
-                    "chat_id": chat_id,
-                    "message_id": message_id,
-                    "reaction": [{"type": "emoji", "emoji": emoji}],
-                    "is_big": False,
-                },
-                timeout=5,
-            )
-            return r.status_code == 200
-        except Exception:
-            log.debug("Failed to set reaction on message_id=%d", message_id, exc_info=True)
-            return False
-
     def send_message_reply(self, chat_id: int, text: str, reply_to_message_id: int,
                            parse_mode: str = "") -> Tuple[bool, str, Optional[int]]:
         """Send a message as a reply to another message. Returns (ok, error, sent_message_id)."""
