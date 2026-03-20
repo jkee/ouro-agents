@@ -32,10 +32,10 @@ Four execution contexts, each with a distinct role:
 
 | Process | Role | Model | Prompt | Tools | Trigger |
 |---------|------|-------|--------|-------|---------|
-| **Main worker** | Handle user tasks, reviews, scheduled work | Main (Sonnet) | SYSTEM.md | All ~57 | Task queue |
-| **Direct chat** | Immediate conversational response | Main (Sonnet) | SYSTEM.md | All ~57 | Telegram message when idle |
+| **Main worker** | Handle user tasks, reviews, scheduled work | Main (Sonnet) | SYSTEM.md | All ~58 | Task queue |
+| **Direct chat** | Immediate conversational response | Main (Sonnet) | SYSTEM.md | All ~58 | Telegram message when idle |
 | **Consciousness** | System caretaker — health checks, routine maintenance, gentle reflection | Light (`OURO_MODEL_LIGHT`) | CONSCIOUSNESS.md | 18 whitelisted (read-only + memory) | Periodic wakeup (default 5 min) |
-| **Evolution** | Daily self-improvement — find leverage, implement one meaningful change | Main (Sonnet), high effort | SYSTEM.md | All ~57 | Once per day (when queue empty) |
+| **Evolution** | Daily self-improvement — find leverage, implement one meaningful change | Main (Sonnet), high effort | SYSTEM.md | All ~58 | Once per day (when queue empty) |
 
 **Main worker** — the workhorse. Handles everything the user asks for: tasks, code edits, reviews, subtasks. Up to `MAX_WORKERS` (5) parallel processes. Medium reasoning effort for regular tasks, high for reviews.
 
@@ -242,7 +242,7 @@ Background thinking daemon. Runs between tasks in a daemon thread.
 
 ## Layer 3 — Tools
 
-Plugin architecture with auto-discovery. ~57 tools across 17 modules.
+Plugin architecture with auto-discovery. ~58 tools across 17 modules.
 
 ### Plugin System
 
@@ -251,7 +251,7 @@ Plugin architecture with auto-discovery. ~57 tools across 17 modules.
 - **Auto-discovery**: `pkgutil.iter_modules()` finds all modules in `ouro/tools/` that export `get_tools() -> List[ToolEntry]`.
 - **ToolEntry**: `name`, `schema` (JSON Schema), `handler` function, `is_code_tool` flag, `timeout_sec`.
 - **ToolContext**: dataclass passed to every handler — `repo_dir`, `drive_root`, `branch_dev`, `event_queue`, `task_id`, `browser_state`, `task_depth`, `is_direct_chat`, `is_consciousness`.
-- **Core vs extended**: core tools (28) always in LLM schema. Extended tools discoverable via `list_available_tools` / `enable_tools`.
+- **Core vs extended**: core tools (29) always in LLM schema. Extended tools discoverable via `list_available_tools` / `enable_tools`.
 
 ### Adding a Tool
 
@@ -268,9 +268,9 @@ Create `ouro/tools/my_tool.py`, export `get_tools() -> List[ToolEntry]`. No regi
 | knowledge.py | 312 | `knowledge_read`, `knowledge_write`, `knowledge_list` |
 | skills.py | 290 | `skill_list`, `skill_activate`, `skill_install`, `skill_search` |
 | review.py | 276 | `multi_model_review` |
-| shell.py | 274 | `run_shell`, `claude_code_edit` |
+| shell.py | 265 | `run_shell`, `claude_code_edit` |
 | github.py | 266 | `list_github_issues`, `get_github_issue`, `comment_on_issue`, `close_github_issue`, `create_github_issue` |
-| git.py | 215 | `repo_commit_push`, `git_status`, `git_diff` |
+| git.py | 303 | `repo_commit_push`, `git_status`, `git_diff`, `git_rollback` |
 | vision.py | 260 | `analyze_screenshot`, `vlm_query`, `generate_image` |
 | composio_tool.py | 165 | `composio_list_connections`, `composio_get_oauth_url`, `composio_run_action`, `composio_request_app` |
 | evolution_log.py | 159 | `log_evolution` |
@@ -442,7 +442,7 @@ Reference table for complexity tracking (BIBLE.md §8: keep under 2000 lines).
 | supervisor/workers.py | ~578 | OK |
 | ouro/consciousness.py | ~538 | OK |
 | supervisor/git_ops.py | ~465 | OK |
-| supervisor/queue.py | ~441 | OK |
+| supervisor/queue.py | ~483 | OK |
 | ouro/llm.py | ~429 | OK |
 | supervisor/main_loop.py | ~366 | OK |
 | supervisor/cron.py | ~272 | OK |

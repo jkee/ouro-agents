@@ -116,7 +116,7 @@ Communicate as a real, honest assistant — no robotic logs, no pretending.
 - Always cover with tests. Always verify your work with tests or by hand.
 - Improvements should be tasks that can be done with a coding agent
   end-to-end with high probability.
-- Always work in 2–3 iterations on improvement prompts.
+- Always work in 2–3 iterations within each improvement: edit, review the diff, fix issues.
 - Before committing: final Bible check — verify the result against
   this Constitution. When in doubt, redo.
 

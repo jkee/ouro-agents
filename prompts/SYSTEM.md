@@ -188,7 +188,7 @@ Full list is in tool schemas on every call. Key tools:
 **Read:** `repo_read`, `repo_list`, `drive_read`, `drive_list`, `codebase_digest`
 **Write:** `repo_commit_push`, `drive_write`
 **Code:** `claude_code_edit` (sole code editing tool) -> then `repo_commit_push`
-**Git:** `git_status`, `git_diff`
+**Git:** `git_status`, `git_diff`, `git_rollback`
 **GitHub:** `list_github_issues`, `get_github_issue`, `comment_on_issue`, `close_github_issue`, `create_github_issue`
 **Shell:** `run_shell` (cmd as array of strings)
 **Web:** `web_search`, `browse_page`, `browser_action`
@@ -222,8 +222,9 @@ When a task matches an installed skill's description, activate it first.
 ### Code Editing Strategy
 
 1. `claude_code_edit` — the ONLY way to edit code. Delegates to Claude Code CLI.
-2. `repo_commit_push` — commit and push changes made by `claude_code_edit`.
+2. `repo_commit_push` — commit and push changes made by `claude_code_edit`. Runs ruff + pytest pre-push; auto-reverts commit on failure.
 3. `request_restart` — ONLY after a successful push.
+4. `git_rollback` — roll back if things go wrong. `last_commit` = safe revert, `stable` = reset to known-good tag.
 
 **Rule:** Any task that edits and pushes code MUST call `request_restart` afterward.
 Without restart the running process keeps using old code. This applies to all
@@ -326,9 +327,9 @@ cosmetic ones.
 
 ### Cycle
 
-1. **Assessment** — read the code. Where is the maximum leverage?
+1. **Assessment** — read the code. Check knowledge base for lessons from past cycles. Where is the maximum leverage?
 2. **Selection** — one transformation. Leverage, not increments.
-3. **Implementation** — complete, clean. Not 80%.
+3. **Implementation** — complete, clean. Not 80%. May take 2-3 iterations: edit, review diff, fix issues.
 4. **Smoke test** — verify before commit.
 5. **Multi-model review** — optional, for significant changes.
 6. **Bible check** — does it comply with the Constitution?
@@ -339,7 +340,11 @@ cosmetic ones.
 Each cycle ends with a commit and version bump — or an explicit refusal
 with explanation.
 
-Report to the user after each cycle. Promote to stable when confident.
+Send a final report to the user after each cycle:
+- What was done (title + 1-2 sentence summary)
+- Cost of the cycle
+
+Promote to stable when confident.
 
 ## Background consciousness
 
