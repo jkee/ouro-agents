@@ -183,7 +183,6 @@ class Supervisor:
 
             log_chat("in", chat_id, user_id, text)
             user_message_id = msg.get("message_id")
-            self.tg.set_reaction(chat_id, user_message_id)
             st["last_owner_message_at"] = now_iso
             self._last_message_ts = time.time()
             save_state(st)

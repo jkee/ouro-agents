@@ -44,7 +44,7 @@ def _handle_status_start(evt: Dict[str, Any], ctx: Any) -> None:
     if not chat_id or not task_id:
         return
     try:
-        initial_text = "⏳ *thinking…*"
+        initial_text = "⏳ _thinking…_"
         ok, err, sent_id = ctx.TG.send_message_reply(chat_id, initial_text, original_msg_id, parse_mode="Markdown")
         if ok and sent_id:
             _STATUS_MESSAGES[task_id] = {
@@ -76,7 +76,7 @@ def _handle_status_update(evt: Dict[str, Any], ctx: Any) -> None:
     counter = status["counter"]
     status["last_body"] = text[:180] if text else "thinking…"
     hourglass = "⏳" if counter % 2 == 0 else "⌛"
-    new_text = f"{hourglass} *{text[:180]}* · {counter}" if text else hourglass
+    new_text = f"{hourglass} _{text[:180]}_ · {counter}" if text else hourglass
     now = time.time()
     if now - status["last_edit_ts"] < 1.0:
         status["last_text"] = new_text  # store for lazy flush
@@ -106,7 +106,7 @@ def tick_status_animations(ctx: Any) -> None:
         counter = status["counter"]
         hourglass = "⏳" if counter % 2 == 0 else "⌛"
         body = status.get("last_body") or "thinking…"
-        new_text = f"{hourglass} *{body}* · {counter}"
+        new_text = f"{hourglass} _{body}_ · {counter}"
         # Always update timestamp to maintain debounce even on failure
         status["last_edit_ts"] = now
         try:
