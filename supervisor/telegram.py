@@ -247,6 +247,30 @@ class TelegramClient:
             log.warning("Failed to download file_id=%s from Telegram", file_id, exc_info=True)
             return None, ""
 
+    def download_file_bytes(self, file_id: str, max_bytes: int = 20_000_000) -> Tuple[Optional[bytes], str]:
+        """Download a file from Telegram and return (raw_bytes, extension). Returns (None, "") on failure."""
+        try:
+            r = requests.get(f"{self.base}/getFile", params={"file_id": file_id}, timeout=10)
+            r.raise_for_status()
+            data = r.json()
+            if not data.get("ok"):
+                return None, ""
+            file_path = data["result"].get("file_path", "")
+            file_size = int(data["result"].get("file_size") or 0)
+            if file_size > max_bytes:
+                log.warning("Voice file too large: %d bytes (file_id=%s)", file_size, file_id)
+                return None, ""
+
+            download_url = f"https://api.telegram.org/file/bot{self._token}/{file_path}"
+            r2 = requests.get(download_url, timeout=60)
+            r2.raise_for_status()
+
+            ext = file_path.rsplit(".", 1)[-1].lower() if "." in file_path else "ogg"
+            return r2.content, ext
+        except Exception:
+            log.warning("Failed to download file_id=%s bytes from Telegram", file_id, exc_info=True)
+            return None, ""
+
 
 # ---------------------------------------------------------------------------
 # Message splitting + formatting

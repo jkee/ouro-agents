@@ -23,12 +23,61 @@ log = logging.getLogger(__name__)
 _ACTIVE_MODE_SEC: int = 300  # 5 min of activity = active polling mode
 
 
+def _transcribe_voice(tg_client: Any, file_id: str) -> Optional[str]:
+    """Download voice/audio from Telegram and transcribe via OpenAI Whisper API.
+
+    Returns transcribed text, or None on failure.
+    """
+    import os
+    import io
+    import requests as _req
+
+    openai_key = os.environ.get("OPENAI_API_KEY", "")
+    if not openai_key:
+        log.warning("OPENAI_API_KEY not set, cannot transcribe voice")
+        return None
+
+    audio_bytes, ext = tg_client.download_file_bytes(file_id)
+    if not audio_bytes:
+        log.warning("Failed to download voice file_id=%s", file_id)
+        return None
+
+    # Map Telegram extensions to Whisper-supported formats
+    ext_map = {"oga": "ogg", "opus": "ogg"}
+    ext = ext_map.get(ext, ext)
+    if ext not in ("ogg", "mp3", "mp4", "mpeg", "mpga", "m4a", "wav", "webm"):
+        ext = "ogg"  # Telegram voice is typically ogg/opus
+
+    filename = f"voice.{ext}"
+    mime_map = {
+        "ogg": "audio/ogg", "mp3": "audio/mpeg", "mp4": "audio/mp4",
+        "mpeg": "audio/mpeg", "mpga": "audio/mpeg", "m4a": "audio/mp4",
+        "wav": "audio/wav", "webm": "audio/webm",
+    }
+    mime = mime_map.get(ext, "audio/ogg")
+
+    try:
+        resp = _req.post(
+            "https://api.openai.com/v1/audio/transcriptions",
+            headers={"Authorization": f"Bearer {openai_key}"},
+            files={"file": (filename, io.BytesIO(audio_bytes), mime)},
+            data={"model": "whisper-1"},
+            timeout=60,
+        )
+        resp.raise_for_status()
+        result = resp.json()
+        text = result.get("text", "").strip()
+        if text:
+            log.info("Voice transcribed (%d bytes -> %d chars)", len(audio_bytes), len(text))
+            return text
+        return None
+    except Exception:
+        log.warning("Whisper transcription failed for file_id=%s", file_id, exc_info=True)
+        return None
+
+
 def _describe_unknown_content(msg: dict) -> str:
     """Build a text description for unsupported Telegram message content types."""
-    if msg.get("voice"):
-        return "[Unsupported message type: voice message]"
-    if msg.get("audio"):
-        return "[Unsupported message type: audio]"
     if msg.get("video"):
         return "[Unsupported message type: video]"
     if msg.get("video_note"):
@@ -246,9 +295,23 @@ class Supervisor:
 
             # All other messages -> queue for sequential processing
             if not text and not image_data:
-                text = _describe_unknown_content(msg)
-                if not text:
-                    continue
+                # Try to transcribe voice/audio via Whisper
+                voice_file_id = None
+                if msg.get("voice"):
+                    voice_file_id = msg["voice"].get("file_id")
+                elif msg.get("audio"):
+                    voice_file_id = msg["audio"].get("file_id")
+
+                if voice_file_id:
+                    transcribed = _transcribe_voice(self.tg, voice_file_id)
+                    if transcribed:
+                        text = f"🎤 {transcribed}"
+                    else:
+                        text = "[Голосовое сообщение — не удалось распознать]"
+                else:
+                    text = _describe_unknown_content(msg)
+                    if not text:
+                        continue
 
             with self._pending_lock:
                 self._pending_messages.append((chat_id, text, image_data, user_message_id))
