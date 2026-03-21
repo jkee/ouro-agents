@@ -583,6 +583,7 @@ class OuroAgent:
 
     def _emit_progress(self, text: str) -> None:
         self._last_progress_ts = time.time()
+        log.debug("emit_progress chat_id=%s task_id=%s text=%r", self._current_chat_id, self._current_task_id, text)
         if self._event_queue is None or self._current_chat_id is None:
             return
         try:
