@@ -98,12 +98,16 @@ def _handle_status_update(evt: Dict[str, Any], ctx: Any) -> None:
     status["counter"] = status.get("counter", 0) + 1
     counter = status["counter"]
     status["last_body"] = text[:180] if text else "thinking…"
-    safe_body = re.sub(r'([_*`\[\]])', r'\\\1', text[:180]) if text else "thinking…"
+    # Strip Markdown special chars so they don't break the outer _italic_ wrapper.
+    # Telegram legacy Markdown does NOT support backslash escaping — only stripping works.
+    # Underscores become hyphens for readability (web_search → web-search).
+    safe_body = re.sub(r'[*`\[\]]', '', text[:180]).replace('_', '-') if text else "thinking…"
     new_text = f"... _{safe_body}_ · {counter}"
     now = time.time()
     if now - status["last_edit_ts"] < _STATUS_DEBOUNCE_S:
         status["last_text"] = new_text  # will be sent on next non-debounced update
         return
+    log.debug("Status edit text: %s", new_text)
     try:
         ok, err = ctx.TG.edit_message_text(status["chat_id"], status["status_msg_id"], new_text, parse_mode="Markdown")
         status["last_edit_ts"] = now
