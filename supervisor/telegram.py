@@ -151,6 +151,16 @@ class TelegramClient:
                     log.warning("Telegram rate limit on editMessageText (msg_id=%d), retry_after=%ds",
                                 message_id, retry_after)
                     return False, "rate_limited"
+                if r.status_code == 400:
+                    err_desc = "unknown"
+                    try:
+                        err_desc = r.json().get("description", "unknown")
+                    except Exception:
+                        pass
+                    if "message is not modified" in err_desc:
+                        return True, "not_modified"
+                    log.warning("edit_message_text bad request (msg_id=%d): %s", message_id, err_desc)
+                    return False, f"bad_request: {err_desc}"
                 r.raise_for_status()
                 data = r.json()
                 if data.get("ok") is True:
