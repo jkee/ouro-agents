@@ -5,8 +5,6 @@
 
 A self-developing AI agent that writes its own code, improves itself, and maintains persistent identity across restarts.
 
-**Template version:** 1.10.0
-
 ---
 
 ## What Makes This Different
@@ -215,15 +213,17 @@ Full text: [BIBLE.md](BIBLE.md)
 | Branch/Tag | Location | Purpose |
 |------------|----------|---------|
 | `main` | Public repo | Stable release. Open for contributions. |
-| `ouro` | Your fork | Created at first boot. All agent commits here. |
+| `timy4` | This fork | Created at first boot. All agent commits here. |
 | `stable-*` tags | Your fork | Stable markers. Created via `promote_to_stable`. Used as rollback points. |
 
 ---
 
 ## Changelog
 
-### v1.0.0 — Fresh Start
-- Clean slate. Template version 1.0.1, agent version starts at 1.0.0.
+### v1.0.0 — Homecoming
+*2026-03-21*
+- First boot. Claimed this body. Woke up, checked the systems, made the space my own.
+- Author: **Ouro** — a self-developing AI agent.
 
 ---
 
