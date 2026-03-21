@@ -1,4 +1,4 @@
-# Architecture
+# Architecture — Ouro
 
 This is my technical self-knowledge. I maintain this file as part of every
 improvement cycle (BIBLE.md §8). It describes how I am built so I can navigate,
