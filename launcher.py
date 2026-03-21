@@ -14,6 +14,11 @@ import types
 
 from typing import Optional
 
+logging.basicConfig(
+    level=getattr(logging, os.environ.get("LOG_LEVEL", "DEBUG").upper(), logging.DEBUG),
+    format="%(asctime)s %(levelname)-7s [%(name)s] %(message)s",
+    datefmt="%H:%M:%S",
+)
 log = logging.getLogger(__name__)
 
 # ----------------------------
