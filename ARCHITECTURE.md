@@ -200,7 +200,7 @@ SSOT for all LLM API calls. Only module that talks to OpenRouter.
 - `chat()` — single LLM call with messages, tools, reasoning_effort.
 - `generate_image()` — image generation via OpenRouter (`modalities: ["image", "text"]`). Image returned in `message.images[0]`.
 - Usage tracking: accumulates tokens + cost across rounds.
-- **Default models**: main = `claude-sonnet-4.6`, code = `claude-opus-4.6`, light = `claude-haiku-4-5`.
+- **Default models**: main = `claude-sonnet-4.6`, code = `claude-opus-4.6`, light = `google/gemini-3-pro-preview`.
 
 ### ouro/context.py (~814 lines)
 
