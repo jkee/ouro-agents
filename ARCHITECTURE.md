@@ -160,7 +160,7 @@ Typed event dataclasses for all 17 event types. Provides IDE autocomplete, field
 Event dispatcher. Workers communicate with supervisor exclusively through a multiprocessing Queue.
 
 - `status_start` — sends "⏳" reply to user's original message, tracks status message per task (with counter).
-- `status_update` — edits status message with progress text (1s debounce, static "..." prefix, tool names + counter). Resends typing indicator every 5th update.
+- `status_update` — edits status message with progress text (1s debounce, braille spinner, tool names + counter). Falls back to separate progress message for tasks without a status message (evolution, consciousness, worker-mode).
 - `llm_usage` — accumulates token costs, logs to events.jsonl.
 - `task_heartbeat` — updates last progress time in RUNNING.
 - `typing_start` — sends Telegram typing indicator.
@@ -235,8 +235,12 @@ Background thinking daemon. Runs between tasks in a daemon thread.
 - **Lifecycle**: `start()`, `stop()`, `pause()` (during tasks), `resume()` (after tasks).
 - **Loop**: sleep → budget check → build lightweight context → LLM call (light model) → up to 5 tool rounds → set next wakeup.
 - **Budget cap**: 10% of total OpenRouter budget (`OURO_BG_BUDGET_PCT`).
-- **Architecture reviews**: proactively schedules ARCHITECTURE.md review every 50 thoughts.
+- **Daily review rotation**: schedules one review block per day via `arch_review.py` (8 blocks cycling: architecture modules, log errors, tools/skills).
 - **Observation queue**: main agent can feed observations via `inject_observation()`.
+
+### ouro/arch_review.py (~175 lines)
+
+Daily review rotation. Defines 8 review blocks (one per day, cycling): architecture modules (blocks 0-5), log error review (block 6), tools & skills improvement (block 7). Consciousness calls `is_review_due()` and `get_block()` to decide when to inject an observation. State tracked via `arch_review_index` and `arch_review_last_at` in persistent state.
 
 ---
 
