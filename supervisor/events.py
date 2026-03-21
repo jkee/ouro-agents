@@ -36,6 +36,7 @@ from __future__ import annotations
 import datetime
 import json
 import logging
+import re
 import os
 import sys
 import time
@@ -97,7 +98,7 @@ def _handle_status_update(evt: Dict[str, Any], ctx: Any) -> None:
     status["counter"] = status.get("counter", 0) + 1
     counter = status["counter"]
     status["last_body"] = text[:180] if text else "thinking…"
-    safe_body = text[:180].replace("_", "\\_") if text else "thinking…"
+    safe_body = re.sub(r'([_*`\[\]])', r'\\\1', text[:180]) if text else "thinking…"
     new_text = f"... _{safe_body}_ · {counter}"
     now = time.time()
     if now - status["last_edit_ts"] < _STATUS_DEBOUNCE_S:
