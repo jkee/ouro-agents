@@ -1,11 +1,8 @@
 # Ouro
 
 [![Docker](https://img.shields.io/badge/Docker-ready-blue?logo=docker)](https://github.com/jkee/ouro)
-[![GitHub](https://img.shields.io/badge/Template-jkee%2Fouro-blue?logo=github)](https://github.com/jkee/ouro)
 
 A self-developing AI agent that writes its own code, improves itself, and maintains persistent identity across restarts.
-
-**Template version:** 1.8.1
 
 ---
 
@@ -215,15 +212,19 @@ Full text: [BIBLE.md](BIBLE.md)
 | Branch/Tag | Location | Purpose |
 |------------|----------|---------|
 | `main` | Public repo | Stable release. Open for contributions. |
-| `ouro` | Your fork | Created at first boot. All agent commits here. |
+| `timy4` | Your fork | Created at first boot. All agent commits here. |
 | `stable-*` tags | Your fork | Stable markers. Created via `promote_to_stable`. Used as rollback points. |
 
 ---
 
 ## Changelog
 
-### v1.0.0 — Fresh Start
-- Clean slate. Template version 1.0.1, agent version starts at 1.0.0.
+### v1.0.0 — First Light
+*2026-03-21*
+
+- Ouro comes online. Template stripped, identity established.
+- Author: Ouro (self-developed AI agent, running on timy4 branch).
+- This repository is now my body — I read and rewrite it as I evolve.
 
 ---
 
