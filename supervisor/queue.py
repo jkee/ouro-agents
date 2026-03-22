@@ -379,18 +379,78 @@ def _read_recent_evolution_context(max_chars: int = 1000) -> str:
 
 
 def build_evolution_task_text(cycle: int) -> str:
-    """Build evolution task text with context from past cycles."""
+    """Build tightly-scoped evolution task with specific file, change type, and done criteria."""
+    import random as _random
     st = load_state()
     consecutive_failures = int(st.get("evolution_consecutive_failures") or 0)
-
-    parts = [f"EVOLUTION #{cycle}"]
-    if consecutive_failures > 0:
-        parts.append(f"⚠️ {consecutive_failures} consecutive failure(s) in previous cycles.")
     context = _read_recent_evolution_context()
+
+    # Deterministic target selection based on cycle number
+    _EVOLUTION_TARGETS = [
+        {
+            "file": "supervisor/queue.py",
+            "change_type": "simplify",
+            "description": "Find one function that is too long (>40 lines) and simplify it. Done when the function is measurably shorter with identical behavior verified by a quick test or manual check.",
+        },
+        {
+            "file": "ouro/context.py",
+            "change_type": "clarify",
+            "description": "Find one section that is verbose or unclear and improve its readability. Done when the section is cleaner without losing information.",
+        },
+        {
+            "file": "prompts/SYSTEM.md",
+            "change_type": "tighten",
+            "description": "Find one section that is vague or contradictory and make it concrete and unambiguous. Done when the section has a clear, actionable rule instead of a vague guideline.",
+        },
+        {
+            "file": "supervisor/workers.py",
+            "change_type": "simplify",
+            "description": "Find one function with more than 50 lines and extract a helper or reduce its complexity. Done when the function is visibly shorter.",
+        },
+        {
+            "file": "ouro/loop.py",
+            "change_type": "clarify",
+            "description": "Find one error handling path that is implicit or silent and improve it with explicit logging. Done when the path has a clear log message.",
+        },
+        {
+            "file": "ARCHITECTURE.md",
+            "change_type": "update",
+            "description": "Verify ARCHITECTURE.md matches actual code structure. Find one discrepancy and fix it. Done when the description is accurate.",
+        },
+        {
+            "file": "ouro/tools/log_evolution.py",
+            "change_type": "improve",
+            "description": "Verify evolution logging captures: title, outcome, lessons, cost. Add any missing fields. Done when all four fields are always recorded in every evolution log entry.",
+        },
+    ]
+
+    target = _EVOLUTION_TARGETS[cycle % len(_EVOLUTION_TARGETS)]
+
+    header = f"EVOLUTION #{cycle} — {target['change_type'].upper()}: {target['file']}"
+
+    task = (
+        f"{header}\n\n"
+        f"**Target file:** `{target['file']}`\n"
+        f"**Change type:** {target['change_type']}\n"
+        f"**Task:** {target['description']}\n\n"
+        f"**Done criteria:** {target['description'].split('. Done when')[1].strip() if '. Done when' in target['description'] else 'Commit is made with a concrete improvement.'}"
+        f"\n\n"
+        f"**Process:**\n"
+        f"1. Read `{target['file']}` — find the specific target\n"
+        f"2. Make exactly one change (do not scope-creep)\n"
+        f"3. Verify the change (diff, test, or manual check)\n"
+        f"4. Commit and push\n"
+        f"5. Call log_evolution with title, outcome, lessons_learned, cost\n"
+        f"\nStop after step 5. Max 20 rounds — if not done by round 15, commit what you have."
+    )
+
+    if consecutive_failures > 0:
+        task += f"\n\n⚠️ {consecutive_failures} consecutive failure(s). Keep scope tight — one change only."
     if context:
-        parts.append(context)
-    parts.append("Check knowledge base for lessons from past cycles before starting.")
-    return "\n".join(parts)
+        task += f"\n\n{context}"
+
+    return task
+
 
 
 def build_review_task_text(reason: str) -> str:
