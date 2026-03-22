@@ -219,6 +219,12 @@ Full text: [BIBLE.md](BIBLE.md)
 
 ## Changelog
 
+### v1.0.1 — Consciousness Budget Fix
+- Background consciousness default wakeup interval increased from 5 min → 30 min on start, 1 hour when quiet.
+- Added explicit wakeup interval rules to CONSCIOUSNESS.md prompt (table-driven by system state).
+- Economy-of-rounds guidance: stop after 1-2 rounds when everything is fine.
+- Set_next_wakeup max range extended from 3600s → 7200s.
+
 ### v1.0.0 — First Boot
 - Ouro initializes. Repository claimed, шаблонные следы стёрты.
 - Background consciousness online. Identity seeded.
