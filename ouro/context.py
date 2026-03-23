@@ -38,16 +38,9 @@ def _build_user_content(task: Dict[str, Any]) -> Any:
 
     # Multipart content with text + image
     parts = []
-    # Combine caption and text for the text part
-    combined_text = ""
-    if image_caption:
-        combined_text = image_caption
-    if text and text != image_caption:
-        combined_text = (combined_text + "\n" + text).strip() if combined_text else text
-
-    # Always include a text part when there's an image
-    if not combined_text:
-        combined_text = "Analyze the screenshot"
+    # Combine caption + text (deduplicate if identical)
+    text_parts = [s for s in [image_caption, text if text != image_caption else ""] if s]
+    combined_text = "\n".join(text_parts).strip() or "Analyze the screenshot"
 
     parts.append({"type": "text", "text": combined_text})
     parts.append({
