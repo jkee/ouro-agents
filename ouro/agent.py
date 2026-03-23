@@ -396,7 +396,9 @@ class OuroAgent:
 
             # Set initial reasoning effort based on task type
             task_type_str = str(task.get("type") or "").lower()
-            if task_type_str in ("evolution", "review"):
+            if task.get("_is_direct_chat"):
+                initial_effort = "low"
+            elif task_type_str in ("evolution", "review"):
                 initial_effort = "high"
             else:
                 initial_effort = "medium"
