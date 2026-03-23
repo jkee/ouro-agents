@@ -40,7 +40,7 @@ log = logging.getLogger(__name__)
 class BackgroundConsciousness:
     """Persistent background thinking loop for Ouro."""
 
-    _MAX_BG_ROUNDS = 5
+    _MAX_BG_ROUNDS = 3
 
     def __init__(
         self,
@@ -204,7 +204,7 @@ class BackgroundConsciousness:
                     model=model,
                     tools=tools,
                     reasoning_effort="low",
-                    max_tokens=2048,
+                    max_tokens=512,
                 )
                 cost = float(usage.get("cost") or 0)
                 total_cost += cost
@@ -354,6 +354,10 @@ class BackgroundConsciousness:
             parts.append("## Recent observations\n\n" + "\n".join(
                 f"- {o}" for o in observations[-10:]))
 
+        # Pre-computed system state (avoids tool calls for routine checks)
+        system_summary = self._build_system_summary()
+        parts.append("## System State (pre-computed — no tool calls needed for these)\n\n" + system_summary)
+
         # Runtime info + state
         runtime_lines = [f"UTC: {utc_now_iso()}"]
         runtime_lines.append(f"BG budget spent: ${self._bg_spent_usd:.4f}")
@@ -378,6 +382,66 @@ class BackgroundConsciousness:
 
         return "\n\n".join(parts)
 
+    def _build_system_summary(self) -> str:
+        """Pre-compute system state so consciousness doesn't need tool calls to check it."""
+        lines = []
+
+        # Recent chat activity
+        try:
+            chat_path = self._drive_root / "logs" / "chat.jsonl"
+            if chat_path.exists():
+                chat_lines = chat_path.read_text(encoding="utf-8").strip().split("\n")
+                msgs = [json.loads(l) for l in chat_lines if l.strip()]
+                if msgs:
+                    last_msg = msgs[-1]
+                    last_ts = last_msg.get("ts", "")
+                    direction = last_msg.get("direction", "?")
+                    lines.append(f"Last chat message: {last_ts[:16]} UTC (direction={direction})")
+                    lines.append(f"Total chat messages: {len(msgs)}")
+        except Exception:
+            pass
+
+        # Cron tasks
+        try:
+            cron_path = self._drive_root / "state" / "cron.json"
+            if cron_path.exists():
+                cron_data = json.loads(cron_path.read_text(encoding="utf-8"))
+                tasks = cron_data if isinstance(cron_data, list) else cron_data.get("tasks", [])
+                lines.append(f"Cron tasks: {len(tasks)} scheduled")
+        except Exception:
+            pass
+
+        # Recent events summary
+        try:
+            events_path = self._drive_root / "logs" / "events.jsonl"
+            if events_path.exists():
+                event_lines = events_path.read_text(encoding="utf-8").strip().split("\n")
+                recent = [json.loads(l) for l in event_lines[-50:] if l.strip()]
+                error_count = sum(1 for e in recent if "error" in e.get("type", "").lower())
+                task_done = sum(1 for e in recent if e.get("type") == "task_done")
+                if error_count:
+                    lines.append(f"Recent errors (last 50 events): {error_count}")
+                if task_done:
+                    lines.append(f"Recent completed tasks (last 50 events): {task_done}")
+        except Exception:
+            pass
+
+        # Budget drift
+        try:
+            state_path = self._drive_root / "state" / "state.json"
+            if state_path.exists():
+                state_data = json.loads(state_path.read_text(encoding="utf-8"))
+                spent = state_data.get("spent_usd", 0)
+                limit = state_data.get("openrouter_limit", 0)
+                remaining = state_data.get("openrouter_limit_remaining", 0)
+                if limit > 0:
+                    pct_spent = (spent / limit) * 100
+                    lines.append(f"Budget: ${spent:.3f} spent / ${remaining:.2f} remaining ({pct_spent:.1f}% used)")
+        except Exception:
+            pass
+
+        return "\n".join(lines) if lines else "System state: nominal (no data available)"
+
     # -------------------------------------------------------------------
     # Tool registry (separate instance for consciousness, not shared with agent)
     # -------------------------------------------------------------------
@@ -390,11 +454,6 @@ class BackgroundConsciousness:
         "knowledge_read", "knowledge_write", "knowledge_list",
         # Read-only tools for awareness
         "web_search", "repo_read", "repo_list", "drive_read", "drive_list",
-        "chat_history",
-        # GitHub Issues
-        "list_github_issues", "get_github_issue",
-        # Cron (read-only awareness)
-        "cron_list",
     })
 
     def _build_registry(self) -> "ToolRegistry":

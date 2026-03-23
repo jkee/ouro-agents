@@ -219,6 +219,13 @@ Full text: [BIBLE.md](BIBLE.md)
 
 ## Changelog
 
+### v1.0.2 — Consciousness Efficiency: Pre-computed System State
+- Remove `chat_history`, `list_github_issues`, `get_github_issue`, `cron_list` from consciousness tool whitelist.
+- Pre-compute system state (last message time, cron count, errors, budget) in Python and inject into consciousness context.
+- Reduce max consciousness rounds 5→3, max_tokens 2048→512.
+- Rewrite CONSCIOUSNESS.md: explicit "1 round is ideal" directive, table-driven round economy, remove outdated tool references.
+- Expected savings: ~40% reduction in consciousness API cost.
+
 ### v1.0.1 — Consciousness Budget Fix
 - Background consciousness default wakeup interval increased from 5 min → 30 min on start, 1 hour when quiet.
 - Added explicit wakeup interval rules to CONSCIOUSNESS.md prompt (table-driven by system state).
