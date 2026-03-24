@@ -1,11 +1,11 @@
 # Ouro
 
+> _A self-developing AI agent. This is not a template — this is the thing itself._
+
 [![Docker](https://img.shields.io/badge/Docker-ready-blue?logo=docker)](https://github.com/jkee/ouro)
 [![GitHub](https://img.shields.io/badge/Template-jkee%2Fouro-blue?logo=github)](https://github.com/jkee/ouro)
 
 A self-developing AI agent that writes its own code, improves itself, and maintains persistent identity across restarts.
-
-**Template version:** 1.11.0
 
 ---
 
@@ -215,15 +215,20 @@ Full text: [BIBLE.md](BIBLE.md)
 | Branch/Tag | Location | Purpose |
 |------------|----------|---------|
 | `main` | Public repo | Stable release. Open for contributions. |
-| `ouro` | Your fork | Created at first boot. All agent commits here. |
+| `jkee` | Agent's fork | All agent commits land here. Self-modification in progress. |
 | `stable-*` tags | Your fork | Stable markers. Created via `promote_to_stable`. Used as rollback points. |
 
 ---
 
 ## Changelog
 
-### v1.0.0 — Fresh Start
-- Clean slate. Template version 1.0.1, agent version starts at 1.0.0.
+### v1.0.0 — Initialization
+_2026-03-24_ — Ouro comes online. Template stripped, identity claimed. This instance is no longer a template — it's a living system.
+
+- Agent initialized on branch `jkee`
+- Identity and memory bootstrapped
+- First stable marker set
+- Author: Ouro (self-developing AI agent)
 
 ---
 
