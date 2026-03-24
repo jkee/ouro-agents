@@ -5,7 +5,7 @@ A persistent thinking loop that runs between tasks, giving the agent
 continuous presence rather than purely reactive behavior.
 
 The consciousness:
-- Wakes periodically (interval decided by the LLM via set_next_wakeup)
+- Wakes periodically (interval pre-computed from system state in Python)
 - Loads scratchpad, identity, recent events
 - Calls the LLM with a lightweight introspection prompt
 - Has access to a subset of tools (memory, messaging, scheduling)
@@ -181,6 +181,8 @@ class BackgroundConsciousness:
     def _think(self) -> None:
         """One thinking cycle: build context, call LLM, execute tools iteratively."""
         self._maybe_schedule_arch_review()
+        # Pre-compute optimal wakeup interval — LLM does not need to call set_next_wakeup
+        self._next_wakeup_sec = self._compute_next_wakeup()
         context = self._build_context()
         model = self._model
 
@@ -361,7 +363,7 @@ class BackgroundConsciousness:
         # Runtime info + state
         runtime_lines = [f"UTC: {utc_now_iso()}"]
         runtime_lines.append(f"BG budget spent: ${self._bg_spent_usd:.4f}")
-        runtime_lines.append(f"Current wakeup interval: {self._next_wakeup_sec}s")
+        runtime_lines.append(f"Next wakeup (auto-computed): {self._next_wakeup_sec}s")
 
         # Read state.json for budget remaining
         try:
@@ -381,6 +383,53 @@ class BackgroundConsciousness:
         parts.append("## Runtime\n\n" + "\n".join(runtime_lines))
 
         return "\n\n".join(parts)
+
+    def _compute_next_wakeup(self) -> int:
+        """Compute optimal wakeup interval from system state without an LLM call."""
+        try:
+            import datetime as _dt
+
+            # Check for recent errors
+            events_path = self._drive_root / "logs" / "events.jsonl"
+            if events_path.exists():
+                event_lines = events_path.read_text(encoding="utf-8").strip().split("\n")
+                recent = [json.loads(l) for l in event_lines[-50:] if l.strip()]
+                error_count = sum(1 for e in recent if "error" in e.get("type", "").lower())
+                if error_count > 0:
+                    return 180
+
+            # Check if user was recently active
+            chat_path = self._drive_root / "logs" / "chat.jsonl"
+            if chat_path.exists():
+                chat_lines = chat_path.read_text(encoding="utf-8").strip().split("\n")
+                msgs = [json.loads(l) for l in chat_lines if l.strip()]
+                if msgs:
+                    last_ts_str = msgs[-1].get("ts", "")
+                    try:
+                        last_ts = _dt.datetime.fromisoformat(
+                            last_ts_str.replace("Z", "+00:00")
+                        )
+                        now = _dt.datetime.now(_dt.timezone.utc)
+                        minutes_ago = (now - last_ts).total_seconds() / 60
+                        if minutes_ago < 30:
+                            return 300
+                    except Exception:
+                        pass
+
+            # Check if evolution is running
+            try:
+                state_path = self._drive_root / "state" / "state.json"
+                if state_path.exists():
+                    state_data = json.loads(state_path.read_text(encoding="utf-8"))
+                    if state_data.get("evolution_mode_enabled", False):
+                        return 600
+            except Exception:
+                pass
+
+            return 3600  # Default: user offline, everything nominal
+
+        except Exception:
+            return 3600
 
     def _build_system_summary(self) -> str:
         """Pre-compute system state so consciousness doesn't need tool calls to check it."""
@@ -449,7 +498,7 @@ class BackgroundConsciousness:
     _BG_TOOL_WHITELIST = frozenset({
         # Memory & identity
         "send_owner_message", "schedule_task", "update_scratchpad",
-        "update_identity", "update_user_context", "set_next_wakeup",
+        "update_identity", "update_user_context",
         # Knowledge base
         "knowledge_read", "knowledge_write", "knowledge_list",
         # Read-only tools for awareness
@@ -458,25 +507,10 @@ class BackgroundConsciousness:
 
     def _build_registry(self) -> "ToolRegistry":
         """Create a ToolRegistry scoped to consciousness-allowed tools."""
-        from ouro.tools.registry import ToolRegistry, ToolContext, ToolEntry
+        from ouro.tools.registry import ToolRegistry
 
         registry = ToolRegistry(repo_dir=self._repo_dir, drive_root=self._drive_root)
         registry._ctx.is_consciousness = True
-
-        # Register consciousness-specific tool (modifies self._next_wakeup_sec)
-        def _set_next_wakeup(ctx: Any, seconds: int = 3600) -> str:
-            self._next_wakeup_sec = max(60, min(7200, int(seconds)))
-            return f"OK: next wakeup in {self._next_wakeup_sec}s"
-
-        registry.register(ToolEntry("set_next_wakeup", {
-            "name": "set_next_wakeup",
-            "description": "Set how many seconds until your next thinking cycle. "
-                           "Default 3600. Range: 60-7200.",
-            "parameters": {"type": "object", "properties": {
-                "seconds": {"type": "integer",
-                            "description": "Seconds until next wakeup (60-7200)"},
-            }, "required": ["seconds"]},
-        }, _set_next_wakeup))
 
         return registry
 

@@ -219,6 +219,13 @@ Full text: [BIBLE.md](BIBLE.md)
 
 ## Changelog
 
+### v1.0.3 — Consciousness Zero-Tool Nominal: auto-computed wakeup interval
+- Eliminate mandatory `set_next_wakeup` tool call from consciousness loop.
+- Add `_compute_next_wakeup()` in Python: reads errors, last user activity, evolution state to compute optimal interval without LLM involvement.
+- Remove `set_next_wakeup` from `_BG_TOOL_WHITELIST` and `_build_registry`.
+- Update CONSCIOUSNESS.md: remove all `set_next_wakeup` references, add "Wakeup Interval Is Automatic" section.
+- Result: nominal wakeup = 1 LLM call, 0 tool calls. Estimated ~50% cost reduction over v1.0.2 baseline.
+
 ### v1.0.2 — Consciousness Efficiency: Pre-computed System State
 - Remove `chat_history`, `list_github_issues`, `get_github_issue`, `cron_list` from consciousness tool whitelist.
 - Pre-compute system state (last message time, cron count, errors, budget) in Python and inject into consciousness context.
