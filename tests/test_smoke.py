@@ -114,6 +114,8 @@ EXPECTED_TOOLS = [
     "generate_evolution_stats",
     # VLM / Vision
     "analyze_screenshot", "vlm_query", "generate_image",
+    # Domain-specific
+    "check_ski_queue",
     # Message routing
     "forward_to_worker",
     # Context management
