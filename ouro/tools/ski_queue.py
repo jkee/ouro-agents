@@ -1,7 +1,7 @@
 """
 Ski queue analyzer — Rosa Khutor KD Edelweis gondola station.
 
-Captures a live frame via SSH from the VPS, analyzes the queue with VLM,
+Grabs a live frame via HLS stream from sochi.camera, analyzes the queue with VLM,
 and optionally sends the photo + analysis to Telegram.
 """
 
@@ -12,6 +12,7 @@ import logging
 import os
 import subprocess
 import tempfile
+import time
 from typing import List
 
 import requests
@@ -20,11 +21,12 @@ from ouro.tools.registry import ToolContext, ToolEntry
 
 log = logging.getLogger(__name__)
 
-_SSH_HOST = "jkee@158.160.81.25"
-_SSH_KEY = "/root/.ssh/id_ed25519"
-_REMOTE_SCRIPT = "DISPLAY=:99 python3 /home/jkee/grab_embed.py"
-_REMOTE_IMAGE = "/home/jkee/edelweis_latest.jpg"
-_SSH_TIMEOUT = 90
+_CAM_API_URL = "https://sochi.camera/api/getCamStream?id=402"
+_CAM_HEADERS = {
+    "Cookie": "player=402",
+    "Referer": "https://sochi.camera/cam-402/",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+}
 
 _VLM_MODEL = "anthropic/claude-sonnet-4-6"
 
@@ -49,51 +51,15 @@ Respond in Russian. Format:
 """
 
 
-def _ssh_run(cmd: str, timeout: int = _SSH_TIMEOUT) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        [
-            "ssh",
-            "-i", _SSH_KEY,
-            "-o", "StrictHostKeyChecking=no",
-            "-o", "BatchMode=yes",
-            "-o", "ConnectTimeout=15",
-            _SSH_HOST,
-            cmd,
-        ],
-        capture_output=True,
-        timeout=timeout,
-    )
-
-
-def _fetch_remote_image() -> bytes:
-    """SCP the remote image to a temp file and return raw bytes."""
-    with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
-        tmp_path = tmp.name
-
-    subprocess.run(
-        [
-            "scp",
-            "-i", _SSH_KEY,
-            "-o", "StrictHostKeyChecking=no",
-            "-o", "BatchMode=yes",
-            "-o", "ConnectTimeout=15",
-            f"{_SSH_HOST}:{_REMOTE_IMAGE}",
-            tmp_path,
-        ],
-        check=True,
-        capture_output=True,
-        timeout=30,
-    )
-
-    with open(tmp_path, "rb") as f:
-        data = f.read()
-
-    try:
-        os.unlink(tmp_path)
-    except OSError:
-        pass
-
-    return data
+def _get_hls_url() -> str:
+    """Call sochi.camera API and return the HLS stream URL."""
+    resp = requests.get(_CAM_API_URL, headers=_CAM_HEADERS, timeout=15)
+    resp.raise_for_status()
+    data = resp.json()
+    url = data.get("src") or data.get("url")
+    if not url:
+        raise ValueError(f"HLS URL not found in API response — keys present: {list(data.keys())}")
+    return url
 
 
 def _analyze_image(image_b64: str) -> str:
@@ -124,34 +90,51 @@ def _send_telegram(image_bytes: bytes, caption: str, chat_id: int, token: str) -
 
 
 def _check_ski_queue(ctx: ToolContext, silent: bool = False) -> str:
-    # 1. Run grab script on VPS
+    # 1. Get HLS URL from API
     try:
-        result = _ssh_run(_REMOTE_SCRIPT, timeout=_SSH_TIMEOUT)
+        hls_url = _get_hls_url()
+    except Exception as e:
+        return f"⚠️ Failed to get HLS URL: {e}"
+
+    # 2. Grab one frame with ffmpeg
+    timestamp = int(time.time())
+    tmp_path = f"/tmp/ski_frame_{timestamp}.jpg"
+    try:
+        result = subprocess.run(
+            ["ffmpeg", "-i", hls_url, "-vframes", "1", "-q:v", "2", tmp_path],
+            capture_output=True,
+            timeout=30,
+        )
         if result.returncode != 0:
             err = result.stderr.decode(errors="replace").strip()
-            return f"⚠️ Grab script failed (exit {result.returncode}): {err}"
+            return f"⚠️ ffmpeg failed (exit {result.returncode}): {err}"
     except subprocess.TimeoutExpired:
-        return "⚠️ Grab script timed out after 90 seconds."
+        return "⚠️ ffmpeg timed out after 30 seconds."
     except Exception as e:
-        return f"⚠️ SSH error: {e}"
+        return f"⚠️ ffmpeg error: {e}"
 
-    # 2. Fetch the image from VPS
+    # 3. Read the frame
     try:
-        image_bytes = _fetch_remote_image()
+        with open(tmp_path, "rb") as f:
+            image_bytes = f.read()
     except Exception as e:
-        return f"⚠️ Failed to fetch image: {e}"
+        return f"⚠️ Failed to read captured frame: {e}"
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
 
     image_b64 = base64.b64encode(image_bytes).decode()
 
-    # 3. Analyze with VLM
-    analysis = None
+    # 4. Analyze with VLM
     try:
         analysis = _analyze_image(image_b64)
     except Exception as e:
         log.warning("VLM analysis failed: %s", e, exc_info=True)
         analysis = f"(анализ недоступен: {e})"
 
-    # 4. Send to Telegram unless silent
+    # 5. Send to Telegram unless silent
     if not silent:
         token = os.environ.get("TG_BOT_TOKEN") or os.environ.get("TELEGRAM_BOT_TOKEN", "")
         chat_id_str = os.environ.get("OURO_OWNER_ID", "63675289")
@@ -166,7 +149,7 @@ def _check_ski_queue(ctx: ToolContext, silent: bool = False) -> str:
                 _send_telegram(image_bytes, caption, chat_id, token)
             except Exception as e:
                 log.warning("Telegram send failed: %s", e)
-                return (analysis or "") + f"\n⚠️ Telegram send failed: {e}"
+                return analysis + f"\n⚠️ Telegram send failed: {e}"
 
     return analysis or "(нет анализа)"
 
@@ -194,6 +177,6 @@ def get_tools() -> List[ToolEntry]:
                 },
             },
             handler=_check_ski_queue,
-            timeout_sec=150,
+            timeout_sec=120,
         ),
     ]
