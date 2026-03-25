@@ -192,6 +192,11 @@ class Supervisor:
             # Extract image if present
             image_data = self._extract_image(msg, caption)
 
+            # Extract voice/audio if present (transcribe via Whisper)
+            voice_text = self._extract_voice(msg)
+            if voice_text and not text:
+                text = voice_text
+
             st = load_state()
             if st.get("owner_id") is None:
                 st["owner_id"] = user_id
@@ -273,6 +278,58 @@ class Supervisor:
                     if b64:
                         return (b64, mime, caption)
         return None
+
+    def _extract_voice(self, msg: dict) -> Optional[str]:
+        """Extract and transcribe voice message or audio from Telegram message."""
+        voice = msg.get("voice") or msg.get("audio")
+        if not voice:
+            return None
+
+        file_id = voice.get("file_id")
+        if not file_id:
+            return None
+
+        log.info("Downloading voice/audio file_id=%s for transcription", file_id)
+        file_bytes, file_path = self.tg.download_file_bytes(file_id)
+        if not file_bytes:
+            log.warning("Failed to download voice file_id=%s", file_id)
+            return None
+
+        text = self._transcribe_voice(file_bytes, file_path)
+        if text:
+            log.info("Transcribed voice: %r", text[:100])
+            return f"[Голосовое сообщение]: {text}"
+        else:
+            return "[Голосовое сообщение: не удалось распознать]"
+
+    def _transcribe_voice(self, file_bytes: bytes, file_path: str) -> Optional[str]:
+        """Transcribe voice/audio file via OpenAI Whisper API. Returns transcription text or None."""
+        import os
+        import io
+        try:
+            from openai import OpenAI
+            api_key = os.environ.get("OPENAI_API_KEY")
+            if not api_key:
+                log.warning("OPENAI_API_KEY not set, cannot transcribe voice")
+                return None
+
+            client = OpenAI(api_key=api_key)
+
+            ext = file_path.rsplit(".", 1)[-1].lower() if "." in file_path else "ogg"
+            filename = f"voice.{ext}"
+
+            audio_file = io.BytesIO(file_bytes)
+            audio_file.name = filename
+
+            transcript = client.audio.transcriptions.create(
+                model="whisper-1",
+                file=audio_file,
+                language="ru",
+            )
+            return transcript.text
+        except Exception:
+            log.warning("Voice transcription failed", exc_info=True)
+            return None
 
     def _run_onboarding(self, chat_id: int, handle_chat_direct: Any) -> None:
         """Run first-contact onboarding flow."""
