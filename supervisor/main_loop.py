@@ -20,15 +20,36 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
+def _transcribe_voice(audio_bytes: bytes, file_ext: str = "ogg") -> Optional[str]:
+    """Transcribe voice audio using OpenAI Whisper API. Returns transcript text or None."""
+    import os
+    import io
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        log.warning("OPENAI_API_KEY not set — cannot transcribe voice")
+        return None
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=api_key)
+        audio_file = io.BytesIO(audio_bytes)
+        audio_file.name = f"voice.{file_ext}"
+        transcript = client.audio.transcriptions.create(
+            model="whisper-1",
+            file=audio_file,
+            language="ru",
+        )
+        return transcript.text
+    except Exception:
+        log.warning("Whisper transcription failed", exc_info=True)
+        return None
+
+
 _ACTIVE_MODE_SEC: int = 300  # 5 min of activity = active polling mode
 
 
 def _describe_unknown_content(msg: dict) -> str:
     """Build a text description for unsupported Telegram message content types."""
-    if msg.get("voice"):
-        return "[Unsupported message type: voice message]"
-    if msg.get("audio"):
-        return "[Unsupported message type: audio]"
+    # voice and audio are handled upstream by _transcribe_voice
     if msg.get("video"):
         return "[Unsupported message type: video]"
     if msg.get("video_note"):
@@ -192,6 +213,24 @@ class Supervisor:
             # Extract image if present
             image_data = self._extract_image(msg, caption)
 
+            # Extract and transcribe voice/audio if present
+            voice_transcript = None
+            voice_data = msg.get("voice") or msg.get("audio")
+            if voice_data:
+                file_id = voice_data.get("file_id")
+                mime_type = voice_data.get("mime_type", "audio/ogg")
+                file_ext = mime_type.split("/")[-1].split(";")[0] if "/" in mime_type else "ogg"
+                if file_ext not in ("ogg", "mpeg", "mp4", "webm", "m4a", "wav", "flac"):
+                    file_ext = "ogg"
+                from supervisor.telegram import get_tg
+                try:
+                    tg_client = get_tg()
+                    audio_bytes = tg_client.download_voice_bytes(file_id)
+                    if audio_bytes:
+                        voice_transcript = _transcribe_voice(audio_bytes, file_ext)
+                except Exception:
+                    log.warning("Failed to process voice message", exc_info=True)
+
             st = load_state()
             if st.get("owner_id") is None:
                 st["owner_id"] = user_id
@@ -246,6 +285,9 @@ class Supervisor:
                     log.warning("Supervisor command handler error", exc_info=True)
 
             # All other messages -> queue for sequential processing
+            # Use voice transcript if available
+            if voice_transcript:
+                text = voice_transcript if not text else text + "\n" + voice_transcript
             if not text and not image_data:
                 text = _describe_unknown_content(msg)
                 if not text:
