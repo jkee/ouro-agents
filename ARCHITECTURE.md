@@ -70,7 +70,7 @@ Configuration dataclass. Reads secrets and env vars, exports to os.environ for c
 
 First-run initialization and stale file cleanup. Extracted from launcher.py.
 
-- `first_run_init()` — Bible §18: improvements-log, find-skills skill, commit+push.
+- `first_run_init()` — Bible §18: /data/improvements-log, find-skills skill, commit+push.
 - `clean_stale_owner_mailbox()` — clears leftover mailbox files from previous session.
 
 ### supervisor/commands.py (~175 lines)
@@ -391,7 +391,7 @@ sleep(_next_wakeup_sec, default 300s)
 | 4 | telegram.py | Verify bot token, get bot info |
 | 5 | git_ops.py | Clone or fetch repo, checkout dev branch |
 | 6 | git_ops.py | Pull latest code, sync dependencies if requirements.txt changed |
-| 7 | bootstrap.py | First-run init (if needed): ensure improvements-log/, install skills |
+| 7 | bootstrap.py | First-run init (if needed): ensure /data/improvements-log/, install skills |
 | 8 | workers.py | Spawn worker pool (up to MAX_WORKERS processes) |
 | 9 | queue.py | Restore queue_snapshot.json (if <15 min old) |
 | 10 | workers.py | Auto-resume interrupted RUNNING tasks |

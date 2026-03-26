@@ -378,6 +378,101 @@ def _read_recent_evolution_context(max_chars: int = 1000) -> str:
         return ""
 
 
+def _compute_evolution_assessment(max_chars: int = 2000) -> str:
+    """Pre-compute cost and efficiency metrics for evolution context."""
+    try:
+        events_path = DRIVE_ROOT / "logs" / "events.jsonl"
+        if not events_path.exists():
+            return ""
+
+        lines = events_path.read_text(encoding="utf-8").strip().split("\n")
+        events = []
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                events.append(json.loads(line))
+            except (json.JSONDecodeError, ValueError):
+                continue
+
+        if not events:
+            return ""
+
+        # Build task_type lookup from task_start events
+        task_types: dict = {}
+        for e in events:
+            if e.get("type") == "task_start":
+                tid = e.get("task_id") or e.get("id")
+                if tid:
+                    task_types[tid] = e.get("task_type", "unknown")
+
+        # Aggregate costs by task type
+        from collections import defaultdict
+        type_costs: dict = defaultdict(float)
+        type_counts: dict = defaultdict(int)
+        task_costs: dict = defaultdict(float)
+        task_rounds: dict = defaultdict(int)
+
+        # Cache stats from recent 300 rounds
+        llm_rounds = [e for e in events if e.get("type") == "llm_round"]
+        recent_rounds = llm_rounds[-300:]
+        total_cached = sum(r.get("cached_tokens", 0) for r in recent_rounds)
+        total_prompt = sum(r.get("prompt_tokens", 0) for r in recent_rounds)
+        cache_rate = (total_cached / total_prompt * 100) if total_prompt > 0 else 0.0
+
+        for e in events:
+            if e.get("type") != "llm_round":
+                continue
+            tid = e.get("task_id", "")
+            cost = float(e.get("cost_usd", 0))
+            ttype = task_types.get(tid, "unknown")
+            type_costs[ttype] += cost
+            type_counts[ttype] += 1
+            task_costs[tid] += cost
+            task_rounds[tid] += 1
+
+        total_cost = sum(type_costs.values())
+
+        # Evolution-specific stats: last 3 evolution tasks
+        evo_tids = [tid for tid, ttype in task_types.items() if ttype == "evolution"]
+        evo_stats = []
+        for tid in evo_tids[-3:]:
+            c = task_costs.get(tid, 0)
+            r = task_rounds.get(tid, 0)
+            if c > 0:
+                evo_stats.append((tid, c, r))
+
+        lines_out = ["## Cost Assessment (pre-computed — no shell analysis needed)"]
+        lines_out.append(f"**Total spent**: ${total_cost:.3f}")
+
+        # Top categories
+        lines_out.append("\n**By task type** (top spenders):")
+        for ttype, cost in sorted(type_costs.items(), key=lambda x: -x[1])[:5]:
+            count = type_counts[ttype]
+            avg = cost / count if count > 0 else 0
+            lines_out.append(f"- `{ttype}`: ${cost:.3f} ({count} rounds, avg ${avg:.4f}/round)")
+
+        # Evolution cycle stats
+        if evo_stats:
+            lines_out.append("\n**Last evolution cycles**:")
+            for tid, cost, rounds in evo_stats:
+                lines_out.append(f"- {tid[:8]}: ${cost:.3f} ({rounds} rounds, ${cost/rounds:.4f}/round)")
+
+        # Cache efficiency
+        lines_out.append(f"\n**Cache hit rate** (last {len(recent_rounds)} rounds): {cache_rate:.1f}% ({total_cached:,} cached / {total_prompt:,} total tokens)")
+
+        lines_out.append("\n_Use this data directly — no shell tool analysis needed._")
+
+        result = "\n".join(lines_out)
+        if len(result) > max_chars:
+            result = result[:max_chars] + "..."
+        return result
+    except Exception:
+        log.debug("Failed to compute evolution assessment", exc_info=True)
+        return ""
+
+
 def build_evolution_task_text(cycle: int) -> str:
     """Build evolution task text with context from past cycles."""
     st = load_state()
@@ -389,6 +484,9 @@ def build_evolution_task_text(cycle: int) -> str:
     context = _read_recent_evolution_context()
     if context:
         parts.append(context)
+    assessment = _compute_evolution_assessment()
+    if assessment:
+        parts.append(assessment)
     parts.append("Check knowledge base for lessons from past cycles before starting.")
     return "\n".join(parts)
 

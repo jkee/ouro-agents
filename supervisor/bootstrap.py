@@ -35,7 +35,7 @@ def clean_stale_owner_mailbox(drive_root: pathlib.Path) -> None:
 def first_run_init(cfg: "Config") -> None:
     """First-run initialization (Bible section 18).
 
-    Creates improvements-log/, installs find-skills skill,
+    Creates /data/improvements-log/, installs find-skills skill,
     commits and pushes init files.
     """
     import subprocess as sp
@@ -47,10 +47,9 @@ def first_run_init(cfg: "Config") -> None:
 
     log.info("First-run initialization (Bible section 18)")
 
-    # Ensure improvements-log/ directory exists
-    implog_dir = cfg.repo_dir / "improvements-log"
+    # Ensure improvements-log/ directory exists on data volume (not in repo)
+    implog_dir = cfg.drive_root / "improvements-log"
     implog_dir.mkdir(parents=True, exist_ok=True)
-    (implog_dir / ".gitkeep").touch(exist_ok=True)
 
     # Pre-install find-skills skill (Agent Skills format)
     skills_dir = cfg.repo_dir / ".agents" / "skills"
@@ -69,12 +68,12 @@ def first_run_init(cfg: "Config") -> None:
 
     # Commit and push init files so workers don't see untracked files
     try:
-        sp.run(["git", "add", "improvements-log/", ".agents/"],
+        sp.run(["git", "add", ".agents/"],
                 cwd=str(cfg.repo_dir), timeout=10, check=True)
         diff = sp.run(["git", "diff", "--cached", "--quiet"],
                       cwd=str(cfg.repo_dir), timeout=10)
         if diff.returncode != 0:
-            sp.run(["git", "commit", "-m", "init: add improvements-log, agent skills"],
+            sp.run(["git", "commit", "-m", "init: add agent skills"],
                     cwd=str(cfg.repo_dir), timeout=30, check=True)
             sp.run(["git", "push", "origin", cfg.branch_dev],
                     cwd=str(cfg.repo_dir), timeout=60, check=True)

@@ -145,7 +145,7 @@ The launcher automatically handles first-run initialization (via `supervisor/boo
 
 1. Validates all API keys and connections
 2. Initializes git — creates a dev branch from `main`, pushes to your fork
-3. Ensures `improvements-log/` directory and agent skills are set up
+3. Ensures `/data/improvements-log/` directory and agent skills are set up
 4. Pre-installs the `find-skills` agent skill
 5. Commits and pushes initial files
 6. Seeds budget from OpenRouter API
@@ -246,7 +246,7 @@ docker compose up -d --build
 1. Config creates `/data/` subdirectories (state, logs, memory, index, locks, archive)
 2. Fresh `state.json` is created with `initialized: false`
 3. Git fetches origin, finds dev branch missing, creates it from `main`, pushes
-4. First-run init: creates `improvements-log/`, installs `find-skills` skill, commits and pushes
+4. First-run init: creates `/data/improvements-log/`, installs `find-skills` skill, commits and pushes
 5. Sets `initialized: true`, starts workers, begins Telegram polling
 6. First message registers owner, triggers onboarding (system check + introduction)
 

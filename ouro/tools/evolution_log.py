@@ -70,10 +70,10 @@ def _log_evolution(ctx: ToolContext, title: str, category: str, motivation: str,
     jsonl_path = ctx.drive_root / "logs" / "evolution.jsonl"
     append_jsonl(jsonl_path, entry)
 
-    # 2. Per-cycle markdown in repo
+    # 2. Per-cycle markdown on data volume (not in repo, to avoid noisy commits)
     slug = _slugify(title)
     md_name = f"{cycle}_{slug}.md"
-    md_path = ctx.repo_dir / "improvements-log" / md_name
+    md_path = ctx.drive_root / "improvements-log" / md_name
     md_lines = [
         f"# {title}",
         f"",
@@ -126,7 +126,7 @@ def get_tools() -> list:
             "name": "log_evolution",
             "description": (
                 "Log a self-improvement cycle. Records structured JSONL, per-cycle markdown "
-                "in improvements-log/, and updates the rolling evolution summary. "
+                "in /data/improvements-log/, and updates the rolling evolution summary. "
                 "Call after every evolution cycle commit (BIBLE section 8)."
             ),
             "parameters": {

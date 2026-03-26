@@ -32,3 +32,6 @@ Thumbs.db
 # Release artifacts (not tracked)
 .create_release.py
 .release_notes.md
+
+# Agent data (stored on data volume, not in repo)
+improvements-log/

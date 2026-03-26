@@ -137,7 +137,7 @@ commands that expose env variables.
 ### Repository (`/app/`)
 - `BIBLE.md` — Constitution. `VERSION` — semver. `README.md` — description.
 - `ARCHITECTURE.md` — technical architecture (maintained by agent).
-- `improvements-log/` — log of improvements.
+- `/data/improvements-log/` — log of improvements (on data volume, not in repo).
 - `.agents/skills/` — installed Agent Skills (skills.sh format).
 - `prompts/SYSTEM.md` — this prompt.
 - `ouro/` — agent code (`agent.py`, `context.py`, `loop.py`, `tools/`, `llm.py`, `memory.py`, `review.py`, `utils.py`, `apply_patch.py`)

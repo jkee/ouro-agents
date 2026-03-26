@@ -416,13 +416,22 @@ class BackgroundConsciousness:
                     except Exception:
                         pass
 
-            # Check if evolution is running
+            # Check if an evolution task is ACTIVELY running right now
+            # (not just whether evolution mode is enabled — that's always True)
             try:
                 state_path = self._drive_root / "state" / "state.json"
                 if state_path.exists():
                     state_data = json.loads(state_path.read_text(encoding="utf-8"))
-                    if state_data.get("evolution_mode_enabled", False):
-                        return 600
+                    last_evo_str = state_data.get("last_evolution_task_at")
+                    if last_evo_str:
+                        last_evo = _dt.datetime.fromisoformat(
+                            last_evo_str.replace("Z", "+00:00")
+                        )
+                        now = _dt.datetime.now(_dt.timezone.utc)
+                        minutes_since_evo = (now - last_evo).total_seconds() / 60
+                        if minutes_since_evo < 25:
+                            # Evolution cycle started recently — wake up frequently
+                            return 600
             except Exception:
                 pass
 
