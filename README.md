@@ -219,6 +219,13 @@ Full text: [BIBLE.md](BIBLE.md)
 
 ## Changelog
 
+### v1.0.4 — Fix Consciousness Wakeup Interval
+- Fix `_compute_next_wakeup()`: `evolution_mode_enabled` is always True in daemon mode → consciousness was waking every 600s instead of 3600s when user is offline.
+- Fix: check `last_evolution_task_at` — return 600s only if an evolution cycle started less than 25 minutes ago.
+- Effect: ~70% reduction in consciousness cost (6 wakeups/h → 1 wakeup/h when idle).
+- Move `improvements-log/` from repo to `/data/` volume — eliminates noisy single-file commits.
+- Pre-compute cost/efficiency assessment in evolution context so LLM doesn't need shell tools for basic stats.
+
 ### v1.0.3 — Consciousness Zero-Tool Nominal: auto-computed wakeup interval
 - Eliminate mandatory `set_next_wakeup` tool call from consciousness loop.
 - Add `_compute_next_wakeup()` in Python: reads errors, last user activity, evolution state to compute optimal interval without LLM involvement.
