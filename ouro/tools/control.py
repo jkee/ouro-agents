@@ -116,6 +116,10 @@ def _send_owner_message(ctx: ToolContext, text: str, reason: str = "") -> str:
 
     Use when you have something genuinely worth saying — an insight,
     a question, a status update, or an invitation to collaborate.
+
+    NOTE: In background tasks (non-direct, non-consciousness, non-cron), this message
+    is buffered to prevent polluting active dialogue. Write findings to
+    scratchpad/knowledge instead for task output.
     """
     if not ctx.current_chat_id:
         return "⚠️ No active chat — cannot send proactive message."
@@ -123,6 +127,41 @@ def _send_owner_message(ctx: ToolContext, text: str, reason: str = "") -> str:
         return "⚠️ Empty message."
 
     from ouro.utils import append_jsonl
+
+    # Background "task"-type workers (scheduled reviews, subtasks) should NOT
+    # fire to Telegram mid-dialogue. Evolution cycles and cron reminders may.
+    task_depth = getattr(ctx, 'task_depth', 0)
+    is_direct = getattr(ctx, 'is_direct_chat', False)
+    is_consciousness = getattr(ctx, 'is_consciousness', False)
+    task_type = str(getattr(ctx, 'current_task_type', '') or '')
+
+    is_background_review = (
+        not is_direct
+        and not is_consciousness
+        and task_type not in ("cron", "evolution", "review")
+    )
+
+    if is_background_review:
+        log.info("Background task send_owner_message buffered (type=%s, depth=%d): reason=%s", task_type, task_depth, reason or "none")
+        buffered_path = ctx.drive_logs() / "buffered_messages.jsonl"
+        try:
+            append_jsonl(buffered_path, {
+                "ts": utc_now_iso(),
+                "type": "buffered_task_message",
+                "task_depth": task_depth,
+                "task_type": task_type,
+                "reason": reason,
+                "text": text,
+            })
+        except Exception:
+            pass
+        return (
+            "⚠️ Message buffered (not sent): background 'task'-type workers should not "
+            "fire to Telegram during active dialogue. Use update_scratchpad or "
+            "knowledge_write to record findings. Only cron reminders, evolution reports, "
+            "reviews, direct_chat, and consciousness may send proactive messages."
+        )
+
     log.info("Proactive message queued: chat_id=%s, len=%d, reason=%s",
              ctx.current_chat_id, len(text), reason or "none")
     ctx.pending_events.append({
