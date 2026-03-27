@@ -506,6 +506,22 @@ def _drain_drive_mailbox(
                     pass
 
 
+def _photo_already_sent(messages: list) -> bool:
+    return any(
+        isinstance(m.get("content"), str) and m["content"].startswith("PHOTO_SENT:")
+        for m in messages if m.get("role") == "tool"
+    )
+
+
+def _get_fallback_model(active_model: str) -> Optional[str]:
+    """Return the first model from OURO_MODEL_FALLBACK_LIST that differs from active_model."""
+    raw = os.environ.get("OURO_MODEL_FALLBACK_LIST", "google/gemini-2.5-pro-preview,openai/o3,anthropic/claude-sonnet-4.6")
+    for candidate in (m.strip() for m in raw.split(",") if m.strip()):
+        if candidate != active_model:
+            return candidate
+    return None
+
+
 def run_llm_loop(
     messages: List[Dict[str, Any]],
     tools: ToolRegistry,
@@ -623,16 +639,7 @@ def run_llm_loop(
             # Fallback to another model if primary model returns empty responses
             if msg is None:
                 # Configurable fallback priority list (Bible P3: no hardcoded behavior)
-                fallback_list_raw = os.environ.get(
-                    "OURO_MODEL_FALLBACK_LIST",
-                    "google/gemini-2.5-pro-preview,openai/o3,anthropic/claude-sonnet-4.6"
-                )
-                fallback_candidates = [m.strip() for m in fallback_list_raw.split(",") if m.strip()]
-                fallback_model = None
-                for candidate in fallback_candidates:
-                    if candidate != active_model:
-                        fallback_model = candidate
-                        break
+                fallback_model = _get_fallback_model(active_model)
                 if fallback_model is None:
                     return (
                         f"⚠️ Failed to get a response from model {active_model} after {max_retries} attempts. "
@@ -663,6 +670,10 @@ def run_llm_loop(
             content = msg.get("content")
             # No tool calls — final response
             if not tool_calls:
+                # Suppress duplicate text response if a photo was already sent via ski_queue
+                if _photo_already_sent(messages):
+                    log.debug("Suppressing final text response: photo already sent via ski_queue")
+                    return "", accumulated_usage, llm_trace
                 return _handle_text_response(content, llm_trace, accumulated_usage)
 
             # Process tool calls
