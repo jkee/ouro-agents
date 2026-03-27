@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import pathlib
+import time
 from typing import Any, Dict, List, Optional, Tuple
 
 from ouro.utils import (
@@ -21,6 +22,8 @@ from ouro.utils import (
 from ouro.memory import Memory
 
 log = logging.getLogger(__name__)
+
+_health_cache: Dict[str, "tuple[float, str]"] = {}
 
 
 def _build_user_content(task: Dict[str, Any]) -> Any:
@@ -206,7 +209,16 @@ def _build_health_invariants(env: Any) -> str:
 
     Surfaces anomalies as informational text. The LLM (not code) decides
     what action to take based on what it reads here.
+
+    Results are cached for 5 minutes per drive_root to avoid repeated disk scans.
     """
+    cache_key = str(env.drive_root)
+    cached = _health_cache.get(cache_key)
+    if cached is not None:
+        ts, result = cached
+        if time.time() - ts < 300:
+            return result
+
     checks = []
 
     # 1. Agent version (VERSION file; pyproject.toml tracks template version separately)
@@ -250,10 +262,9 @@ def _build_health_invariants(env: Any) -> str:
 
     # 4. Stale identity.md
     try:
-        import time as _time
         identity_path = env.drive_path("memory/identity.md")
         if identity_path.exists():
-            age_hours = (_time.time() - identity_path.stat().st_mtime) / 3600
+            age_hours = (time.time() - identity_path.stat().st_mtime) / 3600
             if age_hours > 8:
                 checks.append(f"WARNING: STALE IDENTITY — identity.md last updated {age_hours:.0f}h ago")
             else:
@@ -317,9 +328,9 @@ def _build_health_invariants(env: Any) -> str:
     except Exception:
         pass
 
-    if not checks:
-        return ""
-    return "## Health Invariants\n\n" + "\n".join(f"- {c}" for c in checks)
+    result = "" if not checks else "## Health Invariants\n\n" + "\n".join(f"- {c}" for c in checks)
+    _health_cache[cache_key] = (time.time(), result)
+    return result
 
 
 _STATE_CONTEXT_KEYS = frozenset({

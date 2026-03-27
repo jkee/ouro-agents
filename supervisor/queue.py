@@ -464,6 +464,38 @@ def _compute_evolution_assessment(max_chars: int = 2000) -> str:
 
         lines_out.append("\n_Use this data directly — no shell tool analysis needed._")
 
+        # Top tools breakdown for last 5 evolution tasks
+        try:
+            tools_path = DRIVE_ROOT / "logs" / "tools.jsonl"
+            if tools_path.exists():
+                # Get last 5 evolution task IDs from events
+                evo_task_ids = [tid for tid, ttype in task_types.items() if ttype == "evolution"]
+                last_5_evo = set(evo_task_ids[-5:])
+                if last_5_evo:
+                    tool_counts: dict = defaultdict(int)
+                    tools_text = tools_path.read_text(encoding="utf-8")
+                    for tline in tools_text.splitlines()[-1000:]:
+                        tline = tline.strip()
+                        if not tline:
+                            continue
+                        try:
+                            te = json.loads(tline)
+                            if te.get("task_id") in last_5_evo:
+                                tname = te.get("tool") or te.get("name") or te.get("tool_name")
+                                if tname:
+                                    tool_counts[tname] += 1
+                        except (json.JSONDecodeError, ValueError):
+                            continue
+                    if tool_counts:
+                        total_calls = sum(tool_counts.values())
+                        top_tools = sorted(tool_counts.items(), key=lambda x: -x[1])[:8]
+                        lines_out.append(f"\n**Top tools (last {len(last_5_evo)} evolution tasks)**:")
+                        for tname, cnt in top_tools:
+                            pct = cnt / total_calls * 100 if total_calls > 0 else 0
+                            lines_out.append(f"- {tname}: {cnt} calls ({pct:.0f}%)")
+        except Exception:
+            log.debug("Failed to compute top tools breakdown", exc_info=True)
+
         result = "\n".join(lines_out)
         if len(result) > max_chars:
             result = result[:max_chars] + "..."

@@ -219,6 +219,11 @@ Full text: [BIBLE.md](BIBLE.md)
 
 ## Changelog
 
+### v1.0.5 — Evolution Context: Tool Stats + Health Cache
+- Add TTL cache (5 min) for `_build_health_invariants()` in `context.py` — eliminates repeated 256KB disk scans on every LLM round of a task (50+ scans per evolution cycle → 1 scan per 5 min window).
+- Extend `_compute_evolution_assessment()` in `supervisor/queue.py` to include top-8 tool breakdown from last 5 evolution tasks — agent can see tool usage patterns without writing analysis scripts.
+- Expected effect: ~20-30% reduction in evolution task rounds by pre-surfacing tool usage data; secondary I/O reduction from health check caching.
+
 ### v1.0.4 — Fix Consciousness Wakeup Interval
 - Fix `_compute_next_wakeup()`: `evolution_mode_enabled` is always True in daemon mode → consciousness was waking every 600s instead of 3600s when user is offline.
 - Fix: check `last_evolution_task_at` — return 600s only if an evolution cycle started less than 25 minutes ago.
