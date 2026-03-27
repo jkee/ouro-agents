@@ -159,6 +159,7 @@ def _check_ski_queue(ctx: ToolContext, send_telegram: bool = True) -> str:
         if token:
             try:
                 _send_photo_telegram(frame_bytes, caption, chat_id, token)
+                return f"PHOTO_SENT: {caption}"
             except Exception as e:
                 log.warning("Telegram send failed: %s", e)
                 return caption + f"\n⚠️ Telegram send failed: {e}"
@@ -175,7 +176,8 @@ def get_tools() -> List[ToolEntry]:
                 "description": (
                     "Capture a live frame from Rosa Khutor KD Edelweis ski lift camera (cam-402, 1472m) "
                     "and analyze the queue on a 0-10 scale. "
-                    "Sends photo + analysis to Telegram by default."
+                    "Sends photo + analysis to Telegram by default. "
+                    "Returns 'PHOTO_SENT: ...' when photo is delivered to Telegram — do NOT repeat the content to the user in that case."
                 ),
                 "parameters": {
                     "type": "object",
