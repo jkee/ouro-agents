@@ -507,9 +507,25 @@ def _drain_drive_mailbox(
 
 
 def _photo_already_sent(messages: list) -> bool:
+    """Check if a photo was already sent in the CURRENT round (last set of tool calls).
+
+    Only looks at tool results from the most recent assistant→tool round,
+    not previous rounds in the session history.
+    """
+    # Find the index of the last assistant message with tool_calls
+    last_assistant_idx = -1
+    for i, m in enumerate(messages):
+        if m.get("role") == "assistant" and m.get("tool_calls"):
+            last_assistant_idx = i
+
+    if last_assistant_idx < 0:
+        return False
+
+    # Check only tool messages that appear after the last assistant tool call message
     return any(
         isinstance(m.get("content"), str) and m["content"].startswith("PHOTO_SENT:")
-        for m in messages if m.get("role") == "tool"
+        for m in messages[last_assistant_idx + 1:]
+        if m.get("role") == "tool"
     )
 
 
