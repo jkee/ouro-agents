@@ -251,8 +251,9 @@ def _build_health_invariants(env: Any) -> str:
         from supervisor.state import per_task_cost_summary
         costly = [t for t in per_task_cost_summary(5) if t["cost"] > 5.0]
         for t in costly:
+            cat = t.get("category", "unknown")
             checks.append(
-                f"WARNING: HIGH-COST TASK — task_id={t['task_id']} "
+                f"WARNING: HIGH-COST TASK — task_id={t['task_id']} category={cat} "
                 f"cost=${t['cost']:.2f} rounds={t['rounds']}"
             )
         if not costly:

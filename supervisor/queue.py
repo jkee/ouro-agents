@@ -399,14 +399,6 @@ def _compute_evolution_assessment(max_chars: int = 2000) -> str:
         if not events:
             return ""
 
-        # Build task_type lookup from task_start events
-        task_types: dict = {}
-        for e in events:
-            if e.get("type") == "task_start":
-                tid = e.get("task_id") or e.get("id")
-                if tid:
-                    task_types[tid] = e.get("task_type", "unknown")
-
         # Aggregate costs by task type
         from collections import defaultdict
         type_costs: dict = defaultdict(float)
@@ -421,21 +413,27 @@ def _compute_evolution_assessment(max_chars: int = 2000) -> str:
         total_prompt = sum(r.get("prompt_tokens", 0) for r in recent_rounds)
         cache_rate = (total_cached / total_prompt * 100) if total_prompt > 0 else 0.0
 
+        # Aggregate costs by category using llm_usage events (have category field)
+        # llm_usage is emitted alongside llm_round; use it as it has category
+        evo_tids_ordered: list = []  # track evolution task_ids in order seen
         for e in events:
-            if e.get("type") != "llm_round":
+            if e.get("type") != "llm_usage":
                 continue
-            tid = e.get("task_id", "")
-            cost = float(e.get("cost_usd", 0))
-            ttype = task_types.get(tid, "unknown")
+            tid = e.get("task_id", "") or ""
+            cost = float(e.get("cost", 0))  # llm_usage uses "cost" not "cost_usd"
+            ttype = e.get("category", "unknown")
             type_costs[ttype] += cost
             type_counts[ttype] += 1
-            task_costs[tid] += cost
-            task_rounds[tid] += 1
+            if tid:  # only track per-task stats for non-empty task_ids
+                task_costs[tid] += cost
+                task_rounds[tid] += 1
+                if ttype == "evolution" and tid not in evo_tids_ordered:
+                    evo_tids_ordered.append(tid)
 
         total_cost = sum(type_costs.values())
 
         # Evolution-specific stats: last 3 evolution tasks
-        evo_tids = [tid for tid, ttype in task_types.items() if ttype == "evolution"]
+        evo_tids = evo_tids_ordered
         evo_stats = []
         for tid in evo_tids[-3:]:
             c = task_costs.get(tid, 0)
@@ -469,7 +467,7 @@ def _compute_evolution_assessment(max_chars: int = 2000) -> str:
             tools_path = DRIVE_ROOT / "logs" / "tools.jsonl"
             if tools_path.exists():
                 # Get last 5 evolution task IDs from events
-                evo_task_ids = [tid for tid, ttype in task_types.items() if ttype == "evolution"]
+                evo_task_ids = evo_tids_ordered
                 last_5_evo = set(evo_task_ids[-5:])
                 if last_5_evo:
                     tool_counts: dict = defaultdict(int)

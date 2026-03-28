@@ -489,10 +489,13 @@ def per_task_cost_summary(max_tasks: int = 10, tail_bytes: int = 512_000) -> Lis
                     event = json.loads(line)
                     if event.get("type") != "llm_usage":
                         continue
-                    tid = event.get("task_id") or "unknown"
+                    tid = event.get("task_id") or ""
+                    if not tid:
+                        continue  # skip consciousness/background with no task_id
                     cost = float(event.get("cost", 0) or 0)
+                    category = event.get("category", "unknown")
                     if tid not in tasks:
-                        tasks[tid] = {"task_id": tid, "cost": 0.0, "rounds": 0, "model": event.get("model", "")}
+                        tasks[tid] = {"task_id": tid, "cost": 0.0, "rounds": 0, "model": event.get("model", ""), "category": category}
                     tasks[tid]["cost"] += cost
                     tasks[tid]["rounds"] += 1
                 except (json.JSONDecodeError, ValueError, TypeError):

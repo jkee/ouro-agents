@@ -219,6 +219,12 @@ Full text: [BIBLE.md](BIBLE.md)
 
 ## Changelog
 
+### v1.0.6 — Fix Cost Tracking: task type always "unknown"
+- Fix `_compute_evolution_assessment()` in `supervisor/queue.py`: was looking for phantom `task_start` events (never emitted) to build task_type lookup → all costs aggregated as "unknown". Fix: read `category` field directly from `llm_usage` events which are always correctly tagged.
+- Fix `per_task_cost_summary()` in `supervisor/state.py`: skip consciousness wakeups (empty task_id), add `category` field to result dict.
+- Fix `_build_health_invariants()` in `ouro/context.py`: include `category` in HIGH-COST warning output.
+- Effect: Evolution context now shows accurate per-type cost breakdown (evolution/consciousness/task). HIGH-COST warning no longer fires on cumulative cross-task aggregation.
+
 ### v1.0.5 — Evolution Context: Tool Stats + Health Cache
 - Add TTL cache (5 min) for `_build_health_invariants()` in `context.py` — eliminates repeated 256KB disk scans on every LLM round of a task (50+ scans per evolution cycle → 1 scan per 5 min window).
 - Extend `_compute_evolution_assessment()` in `supervisor/queue.py` to include top-8 tool breakdown from last 5 evolution tasks — agent can see tool usage patterns without writing analysis scripts.
