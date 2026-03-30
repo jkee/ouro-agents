@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import pathlib
+import subprocess
 import threading
 import time
 import uuid
@@ -493,6 +494,45 @@ def _compute_evolution_assessment(max_chars: int = 2000) -> str:
                             lines_out.append(f"- {tname}: {cnt} calls ({pct:.0f}%)")
         except Exception:
             log.debug("Failed to compute top tools breakdown", exc_info=True)
+
+        # Last 3 commits + last cycle outcome detection
+        try:
+            git_log = subprocess.run(
+                ["git", "log", "--oneline", "-3"],
+                cwd="/app", capture_output=True, text=True, timeout=5
+            )
+            git_last_ts = subprocess.run(
+                ["git", "log", "-1", "--format=%ci"],
+                cwd="/app", capture_output=True, text=True, timeout=5
+            )
+            commit_lines = git_log.stdout.strip().splitlines() if git_log.returncode == 0 else []
+            if commit_lines:
+                lines_out.append("\n**Last 3 commits**:")
+                for cl in commit_lines:
+                    lines_out.append(f"- {cl}")
+
+            # Determine last cycle outcome: NO COMMIT if last evolution event is newer than last commit
+            last_commit_ts: Optional[float] = None
+            if git_last_ts.returncode == 0 and git_last_ts.stdout.strip():
+                last_commit_ts = parse_iso_to_ts(git_last_ts.stdout.strip())
+
+            # Find last evolution event timestamp from events
+            last_evo_ts: Optional[float] = None
+            if evo_tids_ordered:
+                last_evo_tid = evo_tids_ordered[-1]
+                for e in reversed(events):
+                    if e.get("task_id") == last_evo_tid:
+                        last_evo_ts = parse_iso_to_ts(e.get("ts", ""))
+                        if last_evo_ts:
+                            break
+
+            if last_evo_ts is not None and last_commit_ts is not None:
+                if last_evo_ts > last_commit_ts:
+                    lines_out.append("\n**Last cycle outcome**: NO COMMIT — analysis only 🚫")
+                else:
+                    lines_out.append("\n**Last cycle outcome**: committed ✅")
+        except Exception:
+            log.debug("Failed to compute git/outcome section", exc_info=True)
 
         result = "\n".join(lines_out)
         if len(result) > max_chars:

@@ -219,6 +219,11 @@ Full text: [BIBLE.md](BIBLE.md)
 
 ## Changelog
 
+### v1.0.7 — Evolution Loop Guard: mid-task commit warning + last-cycle outcome in context
+- Add `_maybe_inject_evolution_warning()` in `ouro/loop.py`: fires once at round 25 for evolution tasks with no commit yet — injects system message forcing the agent to commit or stop.
+- Extend `_compute_evolution_assessment()` in `supervisor/queue.py`: add last 3 git commits + "last cycle outcome" (NO COMMIT 🚫 / committed ✅) to evolution context, detected by comparing last evolution event ts vs last commit ts.
+- Effect: addresses Evolution #8 pattern — $6 spent on pure analysis, 50 rounds, 0 commits. Mid-task nudge + visible outcome history should prevent analysis-only loops.
+
 ### v1.0.6 — Fix Cost Tracking: task type always "unknown"
 - Fix `_compute_evolution_assessment()` in `supervisor/queue.py`: was looking for phantom `task_start` events (never emitted) to build task_type lookup → all costs aggregated as "unknown". Fix: read `category` field directly from `llm_usage` events which are always correctly tagged.
 - Fix `per_task_cost_summary()` in `supervisor/state.py`: skip consciousness wakeups (empty task_id), add `category` field to result dict.

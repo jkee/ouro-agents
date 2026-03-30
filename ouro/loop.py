@@ -416,6 +416,43 @@ def _maybe_inject_self_check(
     emit_progress(f"🔄 Checkpoint {checkpoint_num} at round {round_idx}: ~{ctx_tokens} tokens, ${task_cost:.2f} spent")
 
 
+def _maybe_inject_evolution_warning(
+    round_idx: int,
+    task_type: str,
+    messages: List[Dict[str, Any]],
+    mid_task_warned: bool,
+) -> bool:
+    """Inject a mid-task warning for evolution tasks at round 25 with no commit yet.
+
+    Returns True if warning was injected (caller should set their flag), else False.
+    Fires once at round 25 if task_type == 'evolution' and no repo_commit_push seen.
+    """
+    if mid_task_warned or task_type != "evolution" or round_idx != 25:
+        return False
+    commit_seen = any(
+        isinstance(m.get("content"), list)
+        and any(
+            isinstance(b, dict) and b.get("name") == "repo_commit_push"
+            for b in m.get("content", [])
+        )
+        for m in messages
+        if m.get("role") == "assistant"
+    )
+    if not commit_seen:
+        mid_warning = (
+            "[EVOLUTION MID-TASK WARNING — round 25/50]\n"
+            "You are halfway through MAX_ROUNDS and have NOT yet made a commit.\n"
+            "You MUST now choose one of:\n"
+            "A) Implement your best identified improvement and call repo_commit_push NOW.\n"
+            "B) Conclude that no improvement is warranted, write a brief explanation, and STOP.\n"
+            "Continuing pure analysis without committing is FORBIDDEN past this point.\n"
+            "Every round costs money — deliver something or stop."
+        )
+        messages.append({"role": "system", "content": mid_warning})
+        return True
+    return False
+
+
 def _setup_dynamic_tools(tools_registry, tool_schemas, messages):
     """
     Wire tool-discovery handlers onto an existing tool_schemas list.
@@ -561,6 +598,7 @@ def run_llm_loop(
         MAX_ROUNDS = 50
         log.warning("Invalid OURO_MAX_ROUNDS, defaulting to 50")
     round_idx = 0
+    _mid_task_warned = False
     try:
         while True:
             round_idx += 1
@@ -583,6 +621,8 @@ def run_llm_loop(
 
             # Soft self-check reminder every 50 rounds (LLM-first: agent decides, not code)
             _maybe_inject_self_check(round_idx, MAX_ROUNDS, messages, accumulated_usage, emit_progress)
+            if _maybe_inject_evolution_warning(round_idx, task_type, messages, _mid_task_warned):
+                _mid_task_warned = True
 
             # Apply LLM-driven model/effort switch (via switch_model tool)
             ctx = tools._ctx
