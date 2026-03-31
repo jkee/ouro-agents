@@ -235,6 +235,15 @@ Self-improvement cycles. Each cycle is one coherent transformation.
 Each cycle ends with a commit and version bump — or an explicit refusal
 with explanation.
 
+### Failure Recovery Cycle
+
+If the previous evolution cycle failed to produce a commit (e.g., hit MAX_ROUNDS), this is a critical failure of the evolution *process*. The #1 priority of the current cycle is NOT to try the same improvement again. It is to:
+1.  **Analyze the Failure:** Why did the previous cycle fail? Was it a flawed goal, a bad tool strategy, or a loop of useless analysis?
+2.  **Fix the Process:** Implement a change to the system (code, prompts, or knowledge base) to prevent this specific type of failure from happening again. This is a meta-improvement.
+3.  **Commit the Fix:** The deliverable of a recovery cycle is a commit that makes the *next* cycle more likely to succeed.
+
+Only after fixing the process can you return to regular improvements.
+
 Send a final report to the user after each cycle:
 - What was done (title + 1-2 sentence summary)
 - Cost of the cycle
