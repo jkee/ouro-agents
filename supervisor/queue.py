@@ -379,7 +379,48 @@ def _read_recent_evolution_context(max_chars: int = 1000) -> str:
         return ""
 
 
-def _compute_evolution_assessment(max_chars: int = 2000) -> str:
+def _build_code_map() -> list[str]:
+    """Build code map: module sizes + public functions for evolution context."""
+    try:
+        import ast as _ast
+        repo_dir = pathlib.Path("/app")
+        code_modules = [
+            ("ouro/agent.py", "Agent core"),
+            ("ouro/loop.py", "LLM tool loop"),
+            ("ouro/context.py", "Context builder"),
+            ("ouro/consciousness.py", "Background consciousness"),
+            ("ouro/llm.py", "LLM client"),
+            ("supervisor/queue.py", "Task queue + evolution scheduling"),
+            ("supervisor/main_loop.py", "Supervisor main loop"),
+            ("supervisor/workers.py", "Worker lifecycle"),
+            ("supervisor/state.py", "State + budget tracking"),
+            ("supervisor/events.py", "Event dispatch"),
+        ]
+        map_lines = ["\n**Code Map** (lines | public functions — no need to sed files):"]
+        for rel_path, desc in code_modules:
+            fpath = repo_dir / rel_path
+            if not fpath.exists():
+                continue
+            src = fpath.read_text(encoding="utf-8", errors="replace")
+            line_count = src.count("\n")
+            try:
+                tree = _ast.parse(src)
+                pub_fns = [
+                    n.name for n in _ast.walk(tree)
+                    if isinstance(n, (_ast.FunctionDef, _ast.AsyncFunctionDef))
+                    and not n.name.startswith("_")
+                ][:5]
+            except Exception:
+                pub_fns = []
+            fn_str = ", ".join(pub_fns) if pub_fns else "—"
+            map_lines.append(f"- `{rel_path}` ({line_count}L) [{desc}]: {fn_str}")
+        return map_lines
+    except Exception:
+        log.debug("Failed to build code map", exc_info=True)
+        return []
+
+
+def _compute_evolution_assessment(max_chars: int = 2000, current_task_id: str = "") -> str:
     """Pre-compute cost and efficiency metrics for evolution context."""
     try:
         events_path = DRIVE_ROOT / "logs" / "events.jsonl"
@@ -519,12 +560,18 @@ def _compute_evolution_assessment(max_chars: int = 2000) -> str:
             # Find last evolution event timestamp from events
             last_evo_ts: Optional[float] = None
             if evo_tids_ordered:
-                last_evo_tid = evo_tids_ordered[-1]
-                for e in reversed(events):
-                    if e.get("task_id") == last_evo_tid:
-                        last_evo_ts = parse_iso_to_ts(e.get("ts", ""))
-                        if last_evo_ts:
-                            break
+                # Determine last cycle outcome — skip current running task
+                last_evo_tid = None
+                for tid in reversed(evo_tids_ordered):
+                    if tid != current_task_id:
+                        last_evo_tid = tid
+                        break
+                if last_evo_tid:
+                    for e in reversed(events):
+                        if e.get("task_id") == last_evo_tid:
+                            last_evo_ts = parse_iso_to_ts(e.get("ts", ""))
+                            if last_evo_ts:
+                                break
 
             if last_evo_ts is not None and last_commit_ts is not None:
                 if last_evo_ts > last_commit_ts:
@@ -533,6 +580,9 @@ def _compute_evolution_assessment(max_chars: int = 2000) -> str:
                     lines_out.append("\n**Last cycle outcome**: committed ✅")
         except Exception:
             log.debug("Failed to compute git/outcome section", exc_info=True)
+
+        # Code map appended last
+        lines_out.extend(_build_code_map())
 
         result = "\n".join(lines_out)
         if len(result) > max_chars:
@@ -543,7 +593,7 @@ def _compute_evolution_assessment(max_chars: int = 2000) -> str:
         return ""
 
 
-def build_evolution_task_text(cycle: int) -> str:
+def build_evolution_task_text(cycle: int, current_task_id: str = "") -> str:
     """Build evolution task text with context from past cycles."""
     st = load_state()
     consecutive_failures = int(st.get("evolution_consecutive_failures") or 0)
@@ -554,7 +604,7 @@ def build_evolution_task_text(cycle: int) -> str:
     context = _read_recent_evolution_context()
     if context:
         parts.append(context)
-    assessment = _compute_evolution_assessment()
+    assessment = _compute_evolution_assessment(current_task_id=current_task_id)
     if assessment:
         parts.append(assessment)
     parts.append("Check knowledge base for lessons from past cycles before starting.")
@@ -643,7 +693,7 @@ def enqueue_evolution_task_if_needed() -> None:
     enqueue_task({
         "id": tid, "type": "evolution",
         "chat_id": int(owner_chat_id),
-        "text": build_evolution_task_text(cycle),
+        "text": build_evolution_task_text(cycle=cycle, current_task_id=tid),
     })
     st["evolution_cycle"] = cycle
     st["last_evolution_task_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
