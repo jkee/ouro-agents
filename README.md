@@ -219,6 +219,11 @@ Full text: [BIBLE.md](BIBLE.md)
 
 ## Changelog
 
+### v1.0.9 — Fix NO-COMMIT false positive + Code Map in Evolution Context
+- Fix "NO COMMIT 🚫" false positive: detector now skips the current running task_id when comparing last evolution event vs last commit timestamp. Previously, every cycle started with a false "NO COMMIT" warning.
+- Add `_build_code_map()`: lists module line counts + public function names for all core modules, injected into evolution context. Eliminates reflexive `sed`/`repo_read` calls for code structure overview (was 64% of evolution tool calls).
+- Refactor: extracted `_build_code_map()` to keep `_compute_evolution_assessment` under 200-line limit.
+
 ### v1.0.8 — Evolution Failure Recovery Protocol
 - Add "Failure Recovery Cycle" directive to Evolution Mode in `prompts/SYSTEM.md`.
 - If a previous evolution cycle produced no commit (hit MAX_ROUNDS), the current cycle's #1 priority is to analyze the failure and fix the *process*, not retry the same improvement.
