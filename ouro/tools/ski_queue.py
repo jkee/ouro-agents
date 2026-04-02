@@ -7,6 +7,7 @@ import logging
 import os
 import subprocess
 import tempfile
+import time
 from typing import List
 
 import requests
@@ -42,22 +43,39 @@ Respond ONLY with the JSON, no other text.\
 
 
 def _get_hls_url() -> str:
-    """Fetch current HLS stream URL from sochi.camera API."""
-    r = requests.get(
-        "https://sochi.camera/vse-kamery/cam-402/?format=json",
-        headers={
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-            "Cookie": "player=402",
-            "Referer": "https://sochi.camera/vse-kamery/cam-402/",
-        },
-        timeout=15,
-    )
-    r.raise_for_status()
-    d = json.loads(r.content.decode("utf-8-sig"))
-    url = d.get("hd_url") or d.get("sd_url")
-    if not url:
-        raise RuntimeError(f"No stream URL in API response. Keys: {list(d.keys())}")
-    return url
+    """Fetch current HLS stream URL from sochi.camera API (with retry)."""
+    last_exc: Exception = RuntimeError("No attempts made")
+    for attempt in range(3):
+        try:
+            r = requests.get(
+                "https://sochi.camera/vse-kamery/cam-402/?format=json",
+                headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+                    "Cookie": "player=402",
+                    "Referer": "https://sochi.camera/vse-kamery/cam-402/",
+                },
+                timeout=15,
+            )
+            # Non-retryable: 4xx client errors
+            if 400 <= r.status_code < 500:
+                r.raise_for_status()
+            # Retryable: 5xx server errors
+            if r.status_code >= 500:
+                last_exc = RuntimeError(f"Server error {r.status_code}")
+                if attempt < 2:
+                    time.sleep(2 ** attempt)
+                continue
+            r.raise_for_status()
+            d = json.loads(r.content.decode("utf-8-sig"))
+            url = d.get("hd_url") or d.get("sd_url")
+            if not url:
+                raise RuntimeError(f"No stream URL in API response. Keys: {list(d.keys())}")
+            return url
+        except (requests.ConnectionError, requests.Timeout) as e:
+            last_exc = e
+            if attempt < 2:
+                time.sleep(2 ** attempt)
+    raise RuntimeError(f"Failed to get HLS URL after 3 attempts: {last_exc}")
 
 
 def _capture_frame(hls_url: str) -> bytes:

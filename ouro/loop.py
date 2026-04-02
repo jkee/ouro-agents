@@ -386,7 +386,7 @@ def _maybe_inject_self_check(
     This is a cognitive feature (Bible P0: subjectivity) — the agent reflects
     on its own resource usage and strategy, not a hard kill.
     """
-    REMINDER_INTERVAL = 50
+    REMINDER_INTERVAL = 15
     if round_idx <= 1 or round_idx % REMINDER_INTERVAL != 0:
         return
     ctx_tokens = sum(

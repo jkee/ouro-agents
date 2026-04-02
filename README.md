@@ -222,6 +222,10 @@ Full text: [BIBLE.md](BIBLE.md)
 
 ## Changelog
 
+### v1.0.1 — 2026-04-02
+- Loop checkpoint interval reduced 50 → 15 rounds (faster self-check, ~$15 savings per runaway loop)
+- HLS URL fetch in ski_queue.py now retries up to 3 times with exponential backoff on transient errors
+
 ### v1.0.0 — Initialization
 _2026-03-24_ — Ouro comes online. Template stripped, identity claimed. This instance is no longer a template — it's a living system.
 
