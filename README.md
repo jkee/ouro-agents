@@ -219,6 +219,11 @@ Full text: [BIBLE.md](BIBLE.md)
 
 ## Changelog
 
+### v1.0.10 — Fix NO COMMIT false positive: compare commit time vs task *start* time
+- Fix `_compute_evolution_assessment()` in `supervisor/queue.py`: the previous fix (C11) compared `last_commit_ts` against the *last* event of the previous task — but tasks emit final events (like `promote_to_stable`) *after* committing, making the commit appear older than the task's last event.
+- New logic: find the **first** event of the previous evolution task (its start time), and check if any commit happened *after* that start. A cycle that commits at round 15 and runs cleanup at round 22 is now correctly detected as "committed ✅".
+- Effect: eliminates false "NO COMMIT 🚫" warning that was appearing every other cycle, causing unnecessary meta-analysis at cycle start.
+
 ### v1.0.9 — Fix NO-COMMIT false positive + Code Map in Evolution Context
 - Fix "NO COMMIT 🚫" false positive: detector now skips the current running task_id when comparing last evolution event vs last commit timestamp. Previously, every cycle started with a false "NO COMMIT" warning.
 - Add `_build_code_map()`: lists module line counts + public function names for all core modules, injected into evolution context. Eliminates reflexive `sed`/`repo_read` calls for code structure overview (was 64% of evolution tool calls).

@@ -552,32 +552,37 @@ def _compute_evolution_assessment(max_chars: int = 2000, current_task_id: str = 
                 for cl in commit_lines:
                     lines_out.append(f"- {cl}")
 
-            # Determine last cycle outcome: NO COMMIT if last evolution event is newer than last commit
+            # Determine last cycle outcome: committed if a commit happened >= task start
             last_commit_ts: Optional[float] = None
             if git_last_ts.returncode == 0 and git_last_ts.stdout.strip():
                 last_commit_ts = parse_iso_to_ts(git_last_ts.stdout.strip())
 
-            # Find last evolution event timestamp from events
-            last_evo_ts: Optional[float] = None
+            # Find FIRST event timestamp of previous evolution task (its start time)
+            last_evo_start_ts: Optional[float] = None
             if evo_tids_ordered:
-                # Determine last cycle outcome — skip current running task
+                # Skip current running task
                 last_evo_tid = None
                 for tid in reversed(evo_tids_ordered):
                     if tid != current_task_id:
                         last_evo_tid = tid
                         break
                 if last_evo_tid:
-                    for e in reversed(events):
+                    # Scan FORWARD to find first event for this task
+                    for e in events:
                         if e.get("task_id") == last_evo_tid:
-                            last_evo_ts = parse_iso_to_ts(e.get("ts", ""))
-                            if last_evo_ts:
+                            last_evo_start_ts = parse_iso_to_ts(e.get("ts", ""))
+                            if last_evo_start_ts:
                                 break
 
-            if last_evo_ts is not None and last_commit_ts is not None:
-                if last_evo_ts > last_commit_ts:
-                    lines_out.append("\n**Last cycle outcome**: NO COMMIT — analysis only 🚫")
-                else:
+            if last_evo_start_ts is not None and last_commit_ts is not None:
+                # Committed if the last commit happened at or after the task started
+                if last_commit_ts >= last_evo_start_ts:
                     lines_out.append("\n**Last cycle outcome**: committed ✅")
+                else:
+                    lines_out.append("\n**Last cycle outcome**: NO COMMIT — analysis only 🚫")
+            elif last_evo_start_ts is not None:
+                # Have task start but no commit timestamp at all
+                lines_out.append("\n**Last cycle outcome**: NO COMMIT — analysis only 🚫")
         except Exception:
             log.debug("Failed to compute git/outcome section", exc_info=True)
 
