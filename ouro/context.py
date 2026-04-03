@@ -375,9 +375,10 @@ def build_llm_messages(
     memory.ensure_files()
 
     # --- Assemble messages with 3-block prompt caching ---
-    # Block 1: Static content (SYSTEM.md + BIBLE.md + README) — cached
-    # Block 2: Semi-stable content (identity + scratchpad + knowledge) — cached
-    # Block 3: Dynamic content (state + runtime + recent logs) — uncached
+    # Block 1: Static content (SYSTEM.md + BIBLE.md + README) — cached (1h TTL)
+    # Block 2: Semi-stable content (identity + user_context + knowledge + skills) — cached
+    #          NOTE: scratchpad excluded — it changes per-task (would break cache on every update_scratchpad call)
+    # Block 3: Dynamic content (state + runtime + scratchpad + health + recent logs) — uncached
 
     # BIBLE.md always included (Constitution requires it for every decision)
     # README.md only for evolution/review (architecture context)
@@ -389,10 +390,18 @@ def build_llm_messages(
     if needs_full_context:
         static_text += "\n\n## README.md\n\n" + clip_text(readme_md, 180000)
 
-    # Semi-stable content: identity, scratchpad, knowledge
-    # These change ~once per task, not per round
+    # Semi-stable content: identity, user_context, dialogue_summary, evolution_log, knowledge
+    # These change rarely (~once per few hours) — good cache candidates
+    # NOTE: scratchpad is intentionally excluded — it changes per-task and would break this cache
     semi_stable_parts = []
-    semi_stable_parts.extend(_build_memory_sections(memory))
+
+    # Add memory sections EXCEPT scratchpad (scratchpad goes to dynamic block)
+    scratchpad_section = None
+    for section in _build_memory_sections(memory):
+        if section.startswith("## Scratchpad"):
+            scratchpad_section = section
+        else:
+            semi_stable_parts.append(section)
 
     kb_index_path = env.drive_path("memory/knowledge/_index.md")
     if kb_index_path.exists():
@@ -407,11 +416,16 @@ def build_llm_messages(
 
     semi_stable_text = "\n\n".join(semi_stable_parts)
 
-    # Dynamic content: changes every round
+    # Dynamic content: changes every round or per-task
+    # Scratchpad is here because it's updated frequently (update_scratchpad after each task)
+    # and placing it in semi-stable block would invalidate the cache on every scratchpad write
     dynamic_parts = [
         "## Drive state\n\n" + clip_text(_filter_state_for_context(state_json), 90000),
         _build_runtime_section(env, task),
     ]
+    # Insert scratchpad as first dynamic section (before health invariants and logs)
+    if scratchpad_section:
+        dynamic_parts.append(scratchpad_section)
 
     # Health invariants — surfaces anomalies for LLM-first self-detection
     health_section = _build_health_invariants(env)
