@@ -231,6 +231,11 @@ Self-improvement cycles. Each cycle is one coherent transformation.
 7. **Approval** — if `/no-approve` is OFF, show user and wait for approval.
 8. **Commit + restart** — VERSION, changelog, commit, restart.
 9. **Log** — call `log_evolution` with title, motivation, changes, lessons learned.
+10. **Write next-cycle hint** — call `drive_write` to save `/data/memory/next_cycle_hint.md` with:
+    - What you changed this cycle (1 sentence)
+    - ONE specific improvement to tackle next (file + function + what to change)
+    - Why it's high-leverage
+    Keep it under 150 words. This eliminates orientation overhead for the next cycle.
 
 Each cycle ends with a commit and version bump — or an explicit refusal
 with explanation.

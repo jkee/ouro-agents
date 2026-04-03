@@ -219,6 +219,11 @@ Full text: [BIBLE.md](BIBLE.md)
 
 ## Changelog
 
+### v1.0.11 — Next-Cycle Hint: eliminate evolution orientation phase
+- Add `_read_next_cycle_hint()` in `supervisor/queue.py`: reads `/data/memory/next_cycle_hint.md` and injects it as the first item in evolution task context (after consecutive-failure warning). File is non-existent on first use — graceful no-op.
+- Add step 10 to Evolution Cycle in `prompts/SYSTEM.md`: at end of each cycle, agent writes next-cycle hint to `/data/memory/next_cycle_hint.md` — describing what was changed, ONE specific next target (file + function + change), and why it's high-leverage.
+- Effect: eliminates the orientation phase (rounds 1-8 of analysis/tool calls) by pre-identifying the next improvement target at the END of the previous cycle when context is freshest.
+
 ### v1.0.10 — Fix NO COMMIT false positive: compare commit time vs task *start* time
 - Fix `_compute_evolution_assessment()` in `supervisor/queue.py`: the previous fix (C11) compared `last_commit_ts` against the *last* event of the previous task — but tasks emit final events (like `promote_to_stable`) *after* committing, making the commit appear older than the task's last event.
 - New logic: find the **first** event of the previous evolution task (its start time), and check if any commit happened *after* that start. A cycle that commits at round 15 and runs cleanup at round 22 is now correctly detected as "committed ✅".

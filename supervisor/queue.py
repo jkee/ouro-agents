@@ -598,6 +598,19 @@ def _compute_evolution_assessment(max_chars: int = 2000, current_task_id: str = 
         return ""
 
 
+def _read_next_cycle_hint() -> str:
+    """Read the next-cycle improvement hint written by the previous evolution cycle."""
+    hint_path = DRIVE_ROOT / "memory" / "next_cycle_hint.md"
+    try:
+        if hint_path.exists():
+            content = hint_path.read_text(encoding="utf-8").strip()
+            if content:
+                return f"\n**Pre-identified improvement target (from previous cycle):**\n{content}"
+    except Exception:
+        log.debug("Failed to read next_cycle_hint.md", exc_info=True)
+    return ""
+
+
 def build_evolution_task_text(cycle: int, current_task_id: str = "") -> str:
     """Build evolution task text with context from past cycles."""
     st = load_state()
@@ -606,6 +619,9 @@ def build_evolution_task_text(cycle: int, current_task_id: str = "") -> str:
     parts = [f"EVOLUTION #{cycle}"]
     if consecutive_failures > 0:
         parts.append(f"⚠️ {consecutive_failures} consecutive failure(s) in previous cycles.")
+    next_hint = _read_next_cycle_hint()
+    if next_hint:
+        parts.append(next_hint)
     context = _read_recent_evolution_context()
     if context:
         parts.append(context)
