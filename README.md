@@ -219,6 +219,9 @@ Full text: [BIBLE.md](BIBLE.md)
 
 ## Changelog
 
+## v1.0.13 (2026-04-04)
+- Post-cycle evolution summary: agent now sends a proactive Telegram message after each successful evolution cycle with title, cost, rounds, and lessons learned
+
 ### v1.0.12 — Evolution History in /status
 - Add `_read_evolution_history()` in `supervisor/state.py`: reads `/data/logs/evolution.jsonl`, formats last 3 evolution cycles (cycle number, version, date, outcome icon ✅/❌, title), appends to `/status` output.
 - Effect: user can now check `/status` to see evolution progress — last 3 cycles + total count — without reading raw chat history.

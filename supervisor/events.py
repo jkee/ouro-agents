@@ -309,6 +309,44 @@ def _handle_task_done(evt: Dict[str, Any], ctx: Any) -> None:
             # Success: reset failure counter
             st["evolution_consecutive_failures"] = 0
             ctx.save_state(st)
+
+            # Send proactive post-cycle summary to owner
+            owner_chat_id = st.get("owner_chat_id")
+            if owner_chat_id:
+                try:
+                    # Read last entry from evolution.jsonl for title/outcome/lessons
+                    evo_log = ctx.DRIVE_ROOT / "logs" / "evolution.jsonl"
+                    evo_title = ""
+                    evo_outcome = ""
+                    evo_lessons = ""
+                    evo_cycle = 0
+                    if evo_log.exists():
+                        lines = evo_log.read_text(encoding="utf-8").strip().split("\n")
+                        for line in reversed(lines):
+                            line = line.strip()
+                            if not line:
+                                continue
+                            try:
+                                entry = json.loads(line)
+                                evo_title = entry.get("title", "")
+                                evo_outcome = entry.get("outcome", "success")
+                                evo_lessons = entry.get("lessons_learned", "")
+                                evo_cycle = int(entry.get("cycle") or 0)
+                                break
+                            except (json.JSONDecodeError, Exception):
+                                continue
+
+                    outcome_emoji = "✅" if evo_outcome == "success" else "⚠️"
+                    msg_parts = [f"🧬 Evolution #{evo_cycle} завершена {outcome_emoji}"]
+                    if evo_title:
+                        msg_parts.append(f"*{evo_title}*")
+                    msg_parts.append(f"Стоимость: ${cost:.2f} · Раундов: {rounds}")
+                    if evo_lessons:
+                        msg_parts.append(f"💡 {evo_lessons[:200]}")
+                    summary_msg = "\n".join(msg_parts)
+                    ctx.send_with_budget(int(owner_chat_id), summary_msg)
+                except Exception:
+                    log.debug("Failed to send evolution post-cycle summary", exc_info=True)
         else:
             # Likely failure (empty response or minimal work)
             failures = int(st.get("evolution_consecutive_failures") or 0) + 1
