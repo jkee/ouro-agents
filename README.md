@@ -219,6 +219,10 @@ Full text: [BIBLE.md](BIBLE.md)
 
 ## Changelog
 
+### v1.0.12 — Evolution History in /status
+- Add `_read_evolution_history()` in `supervisor/state.py`: reads `/data/logs/evolution.jsonl`, formats last 3 evolution cycles (cycle number, version, date, outcome icon ✅/❌, title), appends to `/status` output.
+- Effect: user can now check `/status` to see evolution progress — last 3 cycles + total count — without reading raw chat history.
+
 ### v1.0.11 — Next-Cycle Hint: eliminate evolution orientation phase
 - Add `_read_next_cycle_hint()` in `supervisor/queue.py`: reads `/data/memory/next_cycle_hint.md` and injects it as the first item in evolution task context (after consecutive-failure warning). File is non-existent on first use — graceful no-op.
 - Add step 10 to Evolution Cycle in `prompts/SYSTEM.md`: at end of each cycle, agent writes next-cycle hint to `/data/memory/next_cycle_hint.md` — describing what was changed, ONE specific next target (file + function + change), and why it's high-leverage.

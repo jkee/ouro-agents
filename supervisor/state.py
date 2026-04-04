@@ -511,6 +511,42 @@ def per_task_cost_summary(max_tasks: int = 10, tail_bytes: int = 512_000) -> Lis
 # Status text (moved from workers.py)
 # ---------------------------------------------------------------------------
 
+def _read_evolution_history(n: int = 3) -> str:
+    """Read last N evolution cycles from evolution.jsonl and return a formatted summary."""
+    evo_log = DRIVE_ROOT / "logs" / "evolution.jsonl"
+    if not evo_log.exists():
+        return ""
+    try:
+        lines = evo_log.read_text(encoding="utf-8").strip().splitlines()
+        records = []
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                records.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+        if not records:
+            return ""
+        total = len(records)
+        last_n = records[-n:]
+        parts = [f"evolution_history (total: {total} cycles):"]
+        for rec in last_n:
+            cycle = rec.get("cycle", "?")
+            version = rec.get("version", "?")
+            title = rec.get("title", "?")
+            outcome = rec.get("outcome", "?")
+            ts = rec.get("timestamp", "")
+            date_str = ts[:10] if ts else ""
+            outcome_icon = "✅" if outcome == "success" else "❌"
+            parts.append(f"  C{cycle} v{version} [{date_str}] {outcome_icon} {title}")
+        return "\n".join(parts)
+    except Exception as e:
+        log.debug("Failed to read evolution history: %s", e)
+        return ""
+
+
 def status_text(workers_dict: Dict[int, Any], pending_list: list, running_dict: Dict[str, Dict[str, Any]],
                 soft_timeout_sec: int, hard_timeout_sec: int) -> str:
     """Build status text from worker and queue state."""
@@ -590,6 +626,10 @@ def status_text(workers_dict: Dict[int, Any], pending_list: list, running_dict: 
         + f"enabled={int(bool(st.get('evolution_mode_enabled')))}, "
         + f"cycle={int(st.get('evolution_cycle') or 0)}")
     lines.append(f"last_owner_message_at: {st.get('last_owner_message_at') or '-'}")
+    # Add evolution history
+    evo_history = _read_evolution_history(n=3)
+    if evo_history:
+        lines.append(evo_history)
     lines.append(f"timeouts: soft={soft_timeout_sec}s, hard={hard_timeout_sec}s")
     return "\n".join(lines)
 
