@@ -547,6 +547,58 @@ def _read_evolution_history(n: int = 3) -> str:
         return ""
 
 
+def _compute_burn_rate(days: int = 7) -> Optional[str]:
+    """Compute average daily spend over last N days from events.jsonl.
+
+    Returns a formatted string like "$1.23/day (7d avg)" or None if insufficient data.
+    """
+    events_path = DRIVE_ROOT / "logs" / "events.jsonl"
+    if not events_path.exists():
+        return None
+    try:
+        cutoff = time.time() - days * 86400
+        total_cost = 0.0
+        earliest_ts = None
+        with events_path.open("r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    event = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if event.get("type") != "llm_usage":
+                    continue
+                ts_str = event.get("ts", "")
+                if not ts_str:
+                    continue
+                try:
+                    ts = datetime.datetime.fromisoformat(ts_str.replace("Z", "+00:00")).timestamp()
+                except Exception:
+                    continue
+                if ts < cutoff:
+                    continue
+                cost = 0.0
+                if "cost" in event:
+                    cost = float(event.get("cost", 0) or 0)
+                elif "usage" in event and isinstance(event["usage"], dict):
+                    cost = float(event["usage"].get("cost", 0) or 0)
+                total_cost += cost
+                if earliest_ts is None or ts < earliest_ts:
+                    earliest_ts = ts
+        if total_cost == 0.0 or earliest_ts is None:
+            return None
+        # Use actual span of data (capped at `days`), minimum 1 hour to avoid division extremes
+        span_days = max((time.time() - earliest_ts) / 86400, 1 / 24)
+        span_days = min(span_days, days)
+        daily_rate = total_cost / span_days
+        return f"${daily_rate:.2f}/day ({days}d avg)"
+    except Exception as e:
+        log.debug("Failed to compute burn rate: %s", e)
+        return None
+
+
 def status_text(workers_dict: Dict[int, Any], pending_list: list, running_dict: Dict[str, Dict[str, Any]],
                 soft_timeout_sec: int, hard_timeout_sec: int) -> str:
     """Build status text from worker and queue state."""
@@ -596,6 +648,9 @@ def status_text(workers_dict: Dict[int, Any], pending_list: list, running_dict: 
     if or_limit is not None:
         lines.append(f"openrouter_limit: ${float(or_limit):.2f}")
     lines.append(f"spent_usd (tracked): ${spent:.2f}")
+    burn_rate = _compute_burn_rate(days=7)
+    if burn_rate:
+        lines.append(f"burn_rate: {burn_rate}")
     lines.append(f"spent_calls: {st.get('spent_calls')}")
     lines.append(f"prompt_tokens: {st.get('spent_tokens_prompt')}, completion_tokens: {st.get('spent_tokens_completion')}, cached_tokens: {st.get('spent_tokens_cached')}")
 

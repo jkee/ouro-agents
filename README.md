@@ -219,6 +219,9 @@ Full text: [BIBLE.md](BIBLE.md)
 
 ## Changelog
 
+## v1.0.14 (2026-04-05)
+- Budget burn rate in `/status`: shows `burn_rate: $X.XX/day (7d avg)` computed from events.jsonl llm_usage events over last 7 days
+
 ## v1.0.13 (2026-04-04)
 - Post-cycle evolution summary: agent now sends a proactive Telegram message after each successful evolution cycle with title, cost, rounds, and lessons learned
 
