@@ -237,7 +237,7 @@ def _build_health_invariants(env: Any) -> str:
     # 3. Per-task cost anomalies
     try:
         from supervisor.state import per_task_cost_summary
-        costly = [t for t in per_task_cost_summary(5) if t["cost"] > 5.0]
+        costly = [t for t in per_task_cost_summary(5) if t["cost"] > 5.0 and t["task_id"] != "unknown"]
         for t in costly:
             checks.append(
                 f"WARNING: HIGH-COST TASK — task_id={t['task_id']} "
