@@ -168,25 +168,25 @@ def _build_recent_sections(memory: Memory, env: Any, task_id: str = "") -> List[
     sections = []
 
     chat_summary = memory.summarize_chat(
-        memory.read_jsonl_tail("chat.jsonl", 200))
+        memory.read_jsonl_tail("chat.jsonl", 200, max_age_hours=6))
     if chat_summary:
         sections.append("## Recent chat\n\n" + chat_summary)
 
-    progress_entries = memory.read_jsonl_tail("progress.jsonl", 200)
+    progress_entries = memory.read_jsonl_tail("progress.jsonl", 200, max_age_hours=6)
     if task_id:
         progress_entries = [e for e in progress_entries if e.get("task_id") == task_id]
     progress_summary = memory.summarize_progress(progress_entries, limit=15)
     if progress_summary:
         sections.append("## Recent progress\n\n" + progress_summary)
 
-    tools_entries = memory.read_jsonl_tail("tools.jsonl", 200)
+    tools_entries = memory.read_jsonl_tail("tools.jsonl", 200, max_age_hours=6)
     if task_id:
         tools_entries = [e for e in tools_entries if e.get("task_id") == task_id]
     tools_summary = memory.summarize_tools(tools_entries)
     if tools_summary:
         sections.append("## Recent tools\n\n" + tools_summary)
 
-    events_entries = memory.read_jsonl_tail("events.jsonl", 200)
+    events_entries = memory.read_jsonl_tail("events.jsonl", 200, max_age_hours=6)
     if task_id:
         events_entries = [e for e in events_entries if e.get("task_id") == task_id]
     events_summary = memory.summarize_events(events_entries)
@@ -194,7 +194,7 @@ def _build_recent_sections(memory: Memory, env: Any, task_id: str = "") -> List[
         sections.append("## Recent events\n\n" + events_summary)
 
     supervisor_summary = memory.summarize_supervisor(
-        memory.read_jsonl_tail("supervisor.jsonl", 200))
+        memory.read_jsonl_tail("supervisor.jsonl", 200, max_age_hours=6))
     if supervisor_summary:
         sections.append("## Supervisor\n\n" + supervisor_summary)
 
@@ -382,7 +382,7 @@ def build_llm_messages(
 
     # BIBLE.md always included (Constitution requires it for every decision)
     # README.md only for evolution/review (architecture context)
-    needs_full_context = task_type in ("evolution", "review", "scheduled")
+    needs_full_context = task_type in ("evolution", "review")
     static_text = (
         base_prompt + "\n\n"
         + "## BIBLE.md\n\n" + clip_text(bible_md, 180000)

@@ -222,6 +222,10 @@ Full text: [BIBLE.md](BIBLE.md)
 
 ## Changelog
 
+### v1.0.2 — 2026-04-05
+- context: time-filter `_build_recent_sections` to 6h window (reduces block 3 size, improves cache hit rate)
+- context: remove "scheduled" from `needs_full_context` (saves ~3000 tokens per cron fire)
+
 ### v1.0.1 — 2026-04-02
 - Loop checkpoint interval reduced 50 → 15 rounds (faster self-check, ~$15 savings per runaway loop)
 - HLS URL fetch in ski_queue.py now retries up to 3 times with exponential backoff on transient errors

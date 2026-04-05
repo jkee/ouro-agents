@@ -11,6 +11,7 @@ import json
 import logging
 import pathlib
 from collections import Counter
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from ouro.utils import utc_now_iso, read_text, write_text, append_jsonl, short
@@ -139,7 +140,7 @@ class Memory:
 
     # --- JSONL tail reading ---
 
-    def read_jsonl_tail(self, log_name: str, max_entries: int = 100) -> List[Dict[str, Any]]:
+    def read_jsonl_tail(self, log_name: str, max_entries: int = 100, max_age_hours: float = 0) -> List[Dict[str, Any]]:
         """Read the last max_entries records from a JSONL file."""
         path = self.logs_path(log_name)
         if not path.exists():
@@ -157,6 +158,9 @@ class Memory:
                 except Exception:
                     log.debug(f"Failed to parse JSON line in read_jsonl_tail: {line[:100]}", exc_info=True)
                     continue
+            if max_age_hours > 0:
+                cutoff = (datetime.now(timezone.utc) - timedelta(hours=max_age_hours)).isoformat()
+                entries = [e for e in entries if not e.get("ts") or e["ts"] >= cutoff]
             return entries
         except Exception:
             log.warning(f"Failed to read JSONL tail from {log_name}", exc_info=True)
