@@ -238,6 +238,7 @@ def init_state() -> Dict[str, Any]:
 # Budget tracking
 # ---------------------------------------------------------------------------
 EVOLUTION_BUDGET_RESERVE: float = 50.0  # Stop evolution when remaining < this
+CRON_BUDGET_RESERVE: float = 5.0  # Stop crons when remaining < this
 
 
 def openrouter_budget_remaining(st: Dict[str, Any]) -> float:

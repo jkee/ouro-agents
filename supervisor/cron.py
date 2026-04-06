@@ -20,6 +20,7 @@ from croniter import croniter
 from supervisor.state import (
     acquire_file_lock, release_file_lock, atomic_write_text, append_jsonl,
     EVOLUTION_BUDGET_RESERVE,
+    CRON_BUDGET_RESERVE,
 )
 from supervisor.telegram import send_with_budget
 
@@ -201,7 +202,7 @@ def check_and_enqueue_due_crons(
         return 0
 
     # Budget gate
-    if budget_remaining < EVOLUTION_BUDGET_RESERVE:
+    if budget_remaining < CRON_BUDGET_RESERVE:
         return 0
 
     if not owner_chat_id:
