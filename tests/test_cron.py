@@ -217,7 +217,7 @@ def test_check_enqueue_fires_due_cron():
     assert fired == 1
     assert len(tasks) == 1
     assert tasks[0]["text"] == "hourly task"
-    assert tasks[0]["type"] == "task"
+    assert tasks[0]["type"] == "cron"
     assert tasks[0]["chat_id"] == 12345
     assert tasks[0]["cron_id"] == entry["id"]
 

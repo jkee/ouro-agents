@@ -228,7 +228,7 @@ def check_and_enqueue_due_crons(
         tid = uuid.uuid4().hex[:8]
         task = {
             "id": tid,
-            "type": "task",
+            "type": "cron",
             "chat_id": int(owner_chat_id),
             "text": cron.get("description", "cron task"),
             "cron_id": cron.get("id"),
