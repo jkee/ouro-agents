@@ -462,14 +462,17 @@ class OuroAgent:
         # that would double-count in update_budget_from_usage.
         # Cost/token summaries are carried by task_metrics and task_done events.
 
-        self._pending_events.append({
-            "type": "send_message", "chat_id": task["chat_id"],
-            "text": text or "\u200b", "log_text": text or "",
-            "format": "markdown",
-            "task_id": task.get("id"),
-            "reply_to_message_id": task.get("message_id"),
-            "ts": utc_now_iso(),
-        })
+        task_type_for_emit = str(task.get("type") or "").lower()
+        _silent_types = {"cron", "scheduled", "consciousness"}
+        if task_type_for_emit not in _silent_types:
+            self._pending_events.append({
+                "type": "send_message", "chat_id": task["chat_id"],
+                "text": text or "\u200b", "log_text": text or "",
+                "format": "markdown",
+                "task_id": task.get("id"),
+                "reply_to_message_id": task.get("message_id"),
+                "ts": utc_now_iso(),
+            })
 
         duration_sec = round(time.time() - start_time, 3)
         n_tool_calls = len(llm_trace.get("tool_calls", []))
