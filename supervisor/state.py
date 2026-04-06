@@ -547,14 +547,15 @@ def _read_evolution_history(n: int = 3) -> str:
         return ""
 
 
-def _compute_burn_rate(days: int = 7) -> Optional[str]:
+def _compute_burn_rate(days: int = 7) -> tuple:
     """Compute average daily spend over last N days from events.jsonl.
 
-    Returns a formatted string like "$1.23/day (7d avg)" or None if insufficient data.
+    Returns a tuple (formatted_str, daily_rate_float) like ("$1.23/day (7d avg)", 1.23)
+    or (None, None) if insufficient data.
     """
     events_path = DRIVE_ROOT / "logs" / "events.jsonl"
     if not events_path.exists():
-        return None
+        return (None, None)
     try:
         cutoff = time.time() - days * 86400
         total_cost = 0.0
@@ -588,15 +589,15 @@ def _compute_burn_rate(days: int = 7) -> Optional[str]:
                 if earliest_ts is None or ts < earliest_ts:
                     earliest_ts = ts
         if total_cost == 0.0 or earliest_ts is None:
-            return None
+            return (None, None)
         # Use actual span of data (capped at `days`), minimum 1 hour to avoid division extremes
         span_days = max((time.time() - earliest_ts) / 86400, 1 / 24)
         span_days = min(span_days, days)
         daily_rate = total_cost / span_days
-        return f"${daily_rate:.2f}/day ({days}d avg)"
+        return (f"${daily_rate:.2f}/day ({days}d avg)", daily_rate)
     except Exception as e:
         log.debug("Failed to compute burn rate: %s", e)
-        return None
+        return (None, None)
 
 
 def status_text(workers_dict: Dict[int, Any], pending_list: list, running_dict: Dict[str, Dict[str, Any]],
@@ -648,9 +649,14 @@ def status_text(workers_dict: Dict[int, Any], pending_list: list, running_dict: 
     if or_limit is not None:
         lines.append(f"openrouter_limit: ${float(or_limit):.2f}")
     lines.append(f"spent_usd (tracked): ${spent:.2f}")
-    burn_rate = _compute_burn_rate(days=7)
+    burn_rate, daily_rate = _compute_burn_rate(days=7)
     if burn_rate:
         lines.append(f"burn_rate: {burn_rate}")
+    if daily_rate and daily_rate > 0:
+        or_rem = st.get("openrouter_limit_remaining")
+        if or_rem is not None:
+            days_remaining = float(or_rem) / daily_rate
+            lines.append(f"budget_runway: ~{days_remaining:.0f} days")
     lines.append(f"spent_calls: {st.get('spent_calls')}")
     lines.append(f"prompt_tokens: {st.get('spent_tokens_prompt')}, completion_tokens: {st.get('spent_tokens_completion')}, cached_tokens: {st.get('spent_tokens_cached')}")
 

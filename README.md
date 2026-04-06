@@ -219,6 +219,9 @@ Full text: [BIBLE.md](BIBLE.md)
 
 ## Changelog
 
+## v1.0.15 (2026-04-06)
+- Budget runway in `/status`: shows `budget_runway: ~N days` computed as `openrouter_limit_remaining / daily_burn_rate`. Refactored `_compute_burn_rate` to return `(str, float)` tuple so the raw daily rate is accessible without re-reading events.jsonl.
+
 ## v1.0.14 (2026-04-05)
 - Budget burn rate in `/status`: shows `burn_rate: $X.XX/day (7d avg)` computed from events.jsonl llm_usage events over last 7 days
 
