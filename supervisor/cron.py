@@ -232,6 +232,7 @@ def check_and_enqueue_due_crons(
             "chat_id": int(owner_chat_id),
             "text": cron.get("description", "cron task"),
             "cron_id": cron.get("id"),
+            "silent": not cron.get("notify", True),  # if notify=false → silent mode
         }
         enqueue_fn(task)
 

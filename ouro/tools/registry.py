@@ -59,6 +59,9 @@ class ToolContext:
     # True when running inside background consciousness (not main agent)
     is_consciousness: bool = False
 
+    # True when task has notify=false (e.g. silent cron jobs)
+    current_task_silent: bool = False
+
     def repo_path(self, rel: str) -> pathlib.Path:
         return (self.repo_dir / safe_relpath(rel)).resolve()
 

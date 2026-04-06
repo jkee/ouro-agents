@@ -135,6 +135,9 @@ def _send_owner_message(ctx: ToolContext, text: str, reason: str = "") -> str:
     is_consciousness = getattr(ctx, 'is_consciousness', False)
     task_type = str(getattr(ctx, 'current_task_type', '') or '')
 
+    if getattr(ctx, 'current_task_silent', False):
+        return {"sent": False, "reason": "silent mode — message suppressed"}
+
     is_background_review = (
         not is_direct
         and not is_consciousness

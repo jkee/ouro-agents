@@ -71,6 +71,7 @@ class OuroAgent:
         self._current_chat_id: Optional[int] = None
         self._current_task_id: Optional[str] = None
         self._current_task_type: Optional[str] = None
+        self._current_task_silent: bool = False
 
         self._busy = False
         self._last_progress_ts: float = 0.0
@@ -331,6 +332,7 @@ class OuroAgent:
             pending_events=self._pending_events,
             current_chat_id=self._current_chat_id,
             current_task_type=self._current_task_type,
+            current_task_silent=self._current_task_silent,
             emit_progress_fn=self._emit_progress,
             task_depth=int(task.get("depth", 0)),
             is_direct_chat=bool(task.get("_is_direct_chat")),
@@ -381,6 +383,7 @@ class OuroAgent:
         self._current_chat_id = int(task.get("chat_id") or 0) or None
         self._current_task_id = str(task.get("id") or "")
         self._current_task_type = str(task.get("type") or "")
+        self._current_task_silent = bool(task.get("silent", False))
 
         drive_logs = self.env.drive_path("logs")
         heartbeat_stop = self._start_task_heartbeat_loop(str(task.get("id") or ""))
@@ -446,6 +449,7 @@ class OuroAgent:
                 heartbeat_stop.set()
             self._current_task_id = None
             self._current_task_type = None
+            self._current_task_silent = False
 
     # =====================================================================
     # Task result emission
