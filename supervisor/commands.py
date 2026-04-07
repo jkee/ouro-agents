@@ -121,7 +121,7 @@ def handle_supervisor_command(
         return True
 
     if lowered.startswith("/budget"):
-        from supervisor.state import check_openrouter_ground_truth, budget_breakdown
+        from supervisor.state import check_openrouter_ground_truth, budget_breakdown, _compute_burn_rate
         ground_truth = check_openrouter_ground_truth()
         st2 = load_state()
         if ground_truth is not None:
@@ -147,6 +147,12 @@ def handle_supervisor_command(
             breakdown_parts = [f"{cat}=${cost:.2f}" for cat, cost in sorted_cats if cost > 0]
             if breakdown_parts:
                 lines.append(f"  Breakdown: {', '.join(breakdown_parts)}")
+        burn_rate_str, daily_rate = _compute_burn_rate(days=7)
+        if burn_rate_str:
+            lines.append(f"  Burn rate: {burn_rate_str}")
+            if or_remaining is not None and daily_rate and daily_rate > 0:
+                runway_days = float(or_remaining) / daily_rate
+                lines.append(f"  Budget runway: ~{runway_days:.0f} days")
         send_with_budget(chat_id, "\n".join(lines))
         return True
 
