@@ -686,7 +686,47 @@ def status_text(workers_dict: Dict[int, Any], pending_list: list, running_dict: 
         "evolution: "
         + f"enabled={int(bool(st.get('evolution_mode_enabled')))}, "
         + f"cycle={int(st.get('evolution_cycle') or 0)}")
-    lines.append(f"last_owner_message_at: {st.get('last_owner_message_at') or '-'}")
+
+    # Evolution timing: last + next
+    last_evo_at = st.get("last_evolution_task_at") or ""
+    if last_evo_at:
+        try:
+            last_evo_dt = datetime.datetime.fromisoformat(last_evo_at)
+            elapsed_sec = (datetime.datetime.now(datetime.timezone.utc) - last_evo_dt).total_seconds()
+            if elapsed_sec < 3600:
+                last_evo_str = f"{int(elapsed_sec / 60)}m ago"
+            elif elapsed_sec < 86400:
+                last_evo_str = f"{elapsed_sec / 3600:.1f}h ago"
+            else:
+                last_evo_str = f"{elapsed_sec / 86400:.1f}d ago"
+            next_sec = max(0.0, 86400.0 - elapsed_sec)
+            if next_sec < 60:
+                next_evo_str = "soon"
+            elif next_sec < 3600:
+                next_evo_str = f"~{int(next_sec / 60)}m"
+            else:
+                next_evo_str = f"~{next_sec / 3600:.1f}h"
+            lines.append(f"last_evolution: {last_evo_str}, next_evolution: {next_evo_str}")
+        except (ValueError, TypeError):
+            pass
+
+    # Last user message timing
+    last_msg_at = st.get("last_owner_message_at") or ""
+    if last_msg_at:
+        try:
+            last_msg_dt = datetime.datetime.fromisoformat(last_msg_at)
+            msg_elapsed = (datetime.datetime.now(datetime.timezone.utc) - last_msg_dt).total_seconds()
+            if msg_elapsed < 3600:
+                msg_str = f"{int(msg_elapsed / 60)}m ago"
+            elif msg_elapsed < 86400:
+                msg_str = f"{msg_elapsed / 3600:.1f}h ago"
+            else:
+                msg_str = f"{msg_elapsed / 86400:.1f}d ago"
+            lines.append(f"last_user_message: {msg_str}")
+        except (ValueError, TypeError):
+            lines.append(f"last_owner_message_at: {last_msg_at}")
+    else:
+        lines.append("last_user_message: -")
     # Add evolution history
     evo_history = _read_evolution_history(n=3)
     if evo_history:

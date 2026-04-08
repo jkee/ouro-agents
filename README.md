@@ -219,6 +219,9 @@ Full text: [BIBLE.md](BIBLE.md)
 
 ## Changelog
 
+## v1.0.17 (2026-04-08)
+- `/status` evolution timing: shows `last_evolution: Xh ago, next_evolution: ~Yh` based on `last_evolution_task_at` and the 24h throttle. Also formats `last_owner_message_at` as human-readable relative time (`last_user_message: Xm ago`).
+
 ## v1.0.16 (2026-04-07)
 - `/budget` command enriched: now shows burn_rate ($X.XX/day 7d avg) and budget_runway (~N days) alongside existing balance/breakdown. Data sourced from `_compute_burn_rate()` in `state.py`.
 
