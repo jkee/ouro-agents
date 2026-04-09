@@ -600,6 +600,69 @@ def _compute_burn_rate(days: int = 7) -> tuple:
         return (None, None)
 
 
+def _compute_evolution_analytics(n: int = 5) -> str:
+    """Compute avg cost, avg rounds, and trend over last N evolution cycles from events.jsonl.
+
+    Returns a formatted string like:
+      "avg_cost=$0.95 avg_rounds=17 trend=↓ cheaper (last 5 cycles)"
+    or empty string if insufficient data.
+    """
+    events_path = DRIVE_ROOT / "logs" / "events.jsonl"
+    if not events_path.exists():
+        return ""
+    try:
+        from collections import defaultdict
+        task_costs: dict = defaultdict(float)
+        task_rounds: dict = defaultdict(int)
+        evo_tids_ordered: list = []
+        with events_path.open("r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    e = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if e.get("type") != "llm_usage":
+                    continue
+                if e.get("category") != "evolution":
+                    continue
+                tid = e.get("task_id", "") or ""
+                if not tid:
+                    continue
+                cost = float(e.get("cost", 0) or 0)
+                task_costs[tid] += cost
+                task_rounds[tid] += 1
+                if tid not in evo_tids_ordered:
+                    evo_tids_ordered.append(tid)
+        if not evo_tids_ordered:
+            return ""
+        # Take last N evolution task IDs
+        last_n = evo_tids_ordered[-n:]
+        costs = [task_costs[tid] for tid in last_n]
+        rounds = [task_rounds[tid] for tid in last_n]
+        avg_cost = sum(costs) / len(costs)
+        avg_rounds = sum(rounds) / len(rounds)
+        # Trend: compare first half vs second half
+        trend_str = ""
+        if len(costs) >= 4:
+            mid = len(costs) // 2
+            first_avg = sum(costs[:mid]) / mid
+            second_avg = sum(costs[mid:]) / (len(costs) - mid)
+            if second_avg < first_avg * 0.85:
+                trend_str = " trend=↓ cheaper"
+            elif second_avg > first_avg * 1.15:
+                trend_str = " trend=↑ costlier"
+            else:
+                trend_str = " trend=≈ stable"
+        actual = min(n, len(evo_tids_ordered))
+        return f"avg_cost=${avg_cost:.2f} avg_rounds={avg_rounds:.0f}{trend_str} (last {actual} cycles)"
+    except Exception as e:
+        log.debug("Failed to compute evolution analytics: %s", e)
+        return ""
+
+
 def status_text(workers_dict: Dict[int, Any], pending_list: list, running_dict: Dict[str, Dict[str, Any]],
                 soft_timeout_sec: int, hard_timeout_sec: int) -> str:
     """Build status text from worker and queue state."""
@@ -731,6 +794,9 @@ def status_text(workers_dict: Dict[int, Any], pending_list: list, running_dict: 
     evo_history = _read_evolution_history(n=3)
     if evo_history:
         lines.append(evo_history)
+    evo_analytics = _compute_evolution_analytics(n=5)
+    if evo_analytics:
+        lines.append(f"evolution_analytics: {evo_analytics}")
     lines.append(f"timeouts: soft={soft_timeout_sec}s, hard={hard_timeout_sec}s")
     return "\n".join(lines)
 

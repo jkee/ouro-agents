@@ -219,6 +219,9 @@ Full text: [BIBLE.md](BIBLE.md)
 
 ## Changelog
 
+## v1.0.18 (2026-04-09)
+- Evolution analytics in `/status`: shows `evolution_analytics: avg_cost=$X.XX avg_rounds=N trend=↓/↑/≈ (last 5 cycles)`. Computed from events.jsonl by new `_compute_evolution_analytics()` in `state.py`. Gives user a trend view — is evolution getting cheaper or costlier?
+
 ## v1.0.17 (2026-04-08)
 - `/status` evolution timing: shows `last_evolution: Xh ago, next_evolution: ~Yh` based on `last_evolution_task_at` and the 24h throttle. Also formats `last_owner_message_at` as human-readable relative time (`last_user_message: Xm ago`).
 
