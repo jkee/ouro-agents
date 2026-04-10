@@ -511,8 +511,12 @@ def per_task_cost_summary(max_tasks: int = 10, tail_bytes: int = 512_000) -> Lis
 # Status text (moved from workers.py)
 # ---------------------------------------------------------------------------
 
-def _read_evolution_history(n: int = 3) -> str:
-    """Read last N evolution cycles from evolution.jsonl and return a formatted summary."""
+def _read_evolution_history(n: int = 3, all_records: bool = False) -> str:
+    """Read evolution cycles from evolution.jsonl and return a formatted summary.
+
+    When all_records=True, return ALL records as a compact table.
+    When all_records=False (default), return last N records in the legacy format used by /status.
+    """
     evo_log = DRIVE_ROOT / "logs" / "evolution.jsonl"
     if not evo_log.exists():
         return ""
@@ -530,6 +534,22 @@ def _read_evolution_history(n: int = 3) -> str:
         if not records:
             return ""
         total = len(records)
+
+        if all_records:
+            parts = [f"📜 Evolution History ({total} cycles):\n"]
+            for rec in records:
+                cycle = rec.get("cycle", "?")
+                version = rec.get("version", "?")
+                title = rec.get("title", "") or "?"
+                outcome = rec.get("outcome", "?")
+                ts = rec.get("timestamp") or rec.get("date", "")
+                date_str = ts[:10] if ts else "?"
+                outcome_icon = "✅" if outcome == "success" else "❌"
+                if len(title) > 55:
+                    title = title[:55] + "…"
+                parts.append(f"#{cycle:<3} | {date_str} | v{version} | {outcome_icon} | {title}")
+            return "\n".join(parts)
+
         last_n = records[-n:]
         parts = [f"evolution_history (total: {total} cycles):"]
         for rec in last_n:
