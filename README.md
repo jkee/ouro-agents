@@ -219,6 +219,9 @@ Full text: [BIBLE.md](BIBLE.md)
 
 ## Changelog
 
+## v1.0.19 (2026-04-10)
+- `/history` command: shows all evolution cycles as a compact table (`#N | date | v | ✅/❌ | title`). Extends `_read_evolution_history(all_records=True)` in `state.py` (24 lines) + handler in `commands.py` (7 lines). User can now browse full evolution history in Telegram, not just the last 3 cycles visible in `/status`.
+
 ## v1.0.18 (2026-04-09)
 - Evolution analytics in `/status`: shows `evolution_analytics: avg_cost=$X.XX avg_rounds=N trend=↓/↑/≈ (last 5 cycles)`. Computed from events.jsonl by new `_compute_evolution_analytics()` in `state.py`. Gives user a trend view — is evolution getting cheaper or costlier?
 
