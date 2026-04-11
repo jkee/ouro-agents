@@ -178,10 +178,18 @@ def handle_supervisor_command(
         send_with_budget(chat_id, f"\U0001f527 No-approve mode: {state_str}")
         return True
 
-    if lowered.startswith("/history"):
+    if text == "/history" or text.startswith("/history "):
         from supervisor.state import _read_evolution_history
-        history = _read_evolution_history(all_records=True)
-        msg = history if history else "No evolution history yet."
+        parts = text.split()
+        limit = 0  # 0 = all
+        if len(parts) > 1:
+            try:
+                limit = int(parts[1])
+            except ValueError:
+                limit = 0
+        msg = _read_evolution_history(n=limit, all_records=True)
+        if not msg:
+            msg = "No evolution history yet."
         send_with_budget(chat_id, msg)
         return True
 

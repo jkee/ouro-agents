@@ -511,7 +511,54 @@ def per_task_cost_summary(max_tasks: int = 10, tail_bytes: int = 512_000) -> Lis
 # Status text (moved from workers.py)
 # ---------------------------------------------------------------------------
 
-def _read_evolution_history(n: int = 3, all_records: bool = False) -> str:
+def _build_evolution_cost_map() -> tuple:
+    """Build cost+rounds map for evolution tasks from events.jsonl.
+
+    Returns (task_costs: dict[str, float], task_rounds: dict[str, int], task_ts: dict[str, float], tids_ordered: list[str])
+    where task_ts[tid] = timestamp of first llm_usage event for that task.
+    """
+    from collections import defaultdict
+    events_path = DRIVE_ROOT / "logs" / "events.jsonl"
+    task_costs: dict = defaultdict(float)
+    task_rounds: dict = defaultdict(int)
+    task_ts: dict = {}
+    tids_ordered: list = []
+    if not events_path.exists():
+        return task_costs, task_rounds, task_ts, tids_ordered
+    try:
+        with events_path.open("r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    e = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if e.get("type") != "llm_usage":
+                    continue
+                if e.get("category") != "evolution":
+                    continue
+                tid = e.get("task_id", "") or ""
+                if not tid:
+                    continue
+                cost = float(e.get("cost", 0) or 0)
+                task_costs[tid] += cost
+                task_rounds[tid] += 1
+                ts_str = e.get("ts", "")
+                if ts_str and tid not in task_ts:
+                    try:
+                        ts = datetime.datetime.fromisoformat(ts_str.replace("Z", "+00:00")).timestamp()
+                        task_ts[tid] = ts
+                        tids_ordered.append(tid)
+                    except Exception:
+                        pass
+    except Exception as e:
+        log.debug("Failed to build evolution cost map: %s", e)
+    return task_costs, task_rounds, task_ts, tids_ordered
+
+
+def _read_evolution_history(n: int = 0, all_records: bool = False) -> str:
     """Read evolution cycles from evolution.jsonl and return a formatted summary.
 
     When all_records=True, return ALL records as a compact table.
@@ -535,9 +582,36 @@ def _read_evolution_history(n: int = 3, all_records: bool = False) -> str:
             return ""
         total = len(records)
 
-        if all_records:
-            parts = [f"📜 Evolution History ({total} cycles):\n"]
-            for rec in records:
+        if all_records or n == 0:
+            # Build cost map for cross-join
+            task_costs, task_rounds, task_ts, tids_ordered = _build_evolution_cost_map()
+            # Index: ts -> tid (sorted by ts for matching)
+            ts_tid_pairs = sorted(task_ts.items(), key=lambda x: x[1])
+
+            def find_cost_for_record(rec_ts_str: str) -> str:
+                """Find cost for an evolution record by matching timestamp."""
+                if not rec_ts_str or not ts_tid_pairs:
+                    return "  ?"
+                try:
+                    rec_ts = datetime.datetime.fromisoformat(rec_ts_str.replace("Z", "+00:00")).timestamp()
+                except Exception:
+                    return "  ?"
+                best_tid = None
+                best_diff = float("inf")
+                for tid, ts in ts_tid_pairs:
+                    diff = abs(ts - rec_ts)
+                    if diff < best_diff and diff < 7200:  # 2 hour tolerance
+                        best_diff = diff
+                        best_tid = tid
+                if best_tid is None:
+                    return "  ?"
+                cost = task_costs.get(best_tid, 0)
+                return f"${cost:.2f}"
+
+            limit = n if n > 0 else len(records)
+            shown = records[-limit:]
+            parts = [f"📜 Evolution History ({total} cycles, showing {len(shown)}):\n"]
+            for rec in shown:
                 cycle = rec.get("cycle", "?")
                 version = rec.get("version", "?")
                 title = rec.get("title", "") or "?"
@@ -545,12 +619,14 @@ def _read_evolution_history(n: int = 3, all_records: bool = False) -> str:
                 ts = rec.get("timestamp") or rec.get("date", "")
                 date_str = ts[:10] if ts else "?"
                 outcome_icon = "✅" if outcome == "success" else "❌"
-                if len(title) > 55:
-                    title = title[:55] + "…"
-                parts.append(f"#{cycle:<3} | {date_str} | v{version} | {outcome_icon} | {title}")
+                cost_str = find_cost_for_record(ts)
+                if len(title) > 45:
+                    title = title[:45] + "…"
+                parts.append(f"#{cycle:<3} | {date_str} | v{version} | {cost_str:>6} | {outcome_icon} | {title}")
             return "\n".join(parts)
 
-        last_n = records[-n:]
+        display_n = n if n > 0 else 3
+        last_n = records[-display_n:]
         parts = [f"evolution_history (total: {total} cycles):"]
         for rec in last_n:
             cycle = rec.get("cycle", "?")
