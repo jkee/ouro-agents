@@ -219,6 +219,9 @@ Full text: [BIBLE.md](BIBLE.md)
 
 ## Changelog
 
+## v1.0.20 (2026-04-11)
+- `/history N` optional argument: `/history 5` shows last 5 cycles, `/history` shows all. Added cost column `$X.XX` to history table via cross-join of evolution.jsonl × events.jsonl (matched by closest timestamp). `/history` is now the definitive evolution dashboard: `#N | date | v | $cost | ✅/❌ | title`. New `_build_evolution_cost_map()` helper in `state.py` (~40 lines); `_read_evolution_history()` updated (~20 lines); commands.py handler updated (5 lines).
+
 ## v1.0.19 (2026-04-10)
 - `/history` command: shows all evolution cycles as a compact table (`#N | date | v | ✅/❌ | title`). Extends `_read_evolution_history(all_records=True)` in `state.py` (24 lines) + handler in `commands.py` (7 lines). User can now browse full evolution history in Telegram, not just the last 3 cycles visible in `/status`.
 
