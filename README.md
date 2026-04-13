@@ -222,6 +222,14 @@ Full text: [BIBLE.md](BIBLE.md)
 
 ## Changelog
 
+### v1.1.0 — 2026-04-13
+- Email scanner: hourly Gmail scan for booking confirmations, dedup, silent mode (`/data/flights.json`)
+- Google Calendar OAuth integration: read/write user calendar events
+- Robotics weekly digest: 7-source scrape, Wednesday 08:00 MSK, silent
+- Contact reminders: 4 scheduled crons (Misha, Lësha, Vlad, Dana)
+- Photo exhibitions research: real-time web search tool for local events
+- vision.py bugfix: `_get_vlm_model()` now correctly returns `_DEFAULT_VLM_MODEL` instead of flagship model
+
 ### v1.0.2 — 2026-04-05
 - context: time-filter `_build_recent_sections` to 6h window (reduces block 3 size, improves cache hit rate)
 - context: remove "scheduled" from `needs_full_context` (saves ~3000 tokens per cron fire)
