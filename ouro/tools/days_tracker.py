@@ -11,6 +11,8 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import Optional
 
+from ouro.tools.registry import ToolEntry
+
 FLIGHTS_PATH = Path("/data/flights.json")
 CONFIG_PATH = Path("/data/country_days.json")
 
@@ -319,41 +321,49 @@ def days_tracker_add_stay(
 
 def get_tools() -> list:
     return [
-        {
-            "name": "days_tracker_status",
-            "description": (
-                "Show how many days the user has spent in Russia (2026 calendar year) "
-                "and in Schengen (last 180-day window), with remaining days and warnings. "
-                "Use when asked: сколько дней в России, остаток по Шенгену, визовый статус, etc."
-            ),
-            "parameters": {"type": "object", "properties": {}, "required": []},
-            "function": days_tracker_status,
-        },
-        {
-            "name": "days_tracker_add_stay",
-            "description": "Manually add a country stay to the tracker (for trips not in flights.json).",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "country_code": {
-                        "type": "string",
-                        "description": "ISO 2-letter country code, e.g. PT, RU, GB",
-                    },
-                    "from_date": {
-                        "type": "string",
-                        "description": "Start date YYYY-MM-DD (inclusive)",
-                    },
-                    "to_date": {
-                        "type": "string",
-                        "description": "End date YYYY-MM-DD (exclusive, day of departure)",
-                    },
-                    "note": {
-                        "type": "string",
-                        "description": "Optional description",
-                    },
-                },
-                "required": ["country_code", "from_date", "to_date"],
+        ToolEntry(
+            name="days_tracker_status",
+            schema={
+                "name": "days_tracker_status",
+                "description": (
+                    "Show how many days the user has spent in Russia (2026 calendar year) "
+                    "and in Schengen (last 180-day window), with remaining days and warnings. "
+                    "Use when asked: сколько дней в России, остаток по Шенгену, визовый статус, etc."
+                ),
+                "parameters": {"type": "object", "properties": {}, "required": []},
             },
-            "function": days_tracker_add_stay,
-        },
+            handler=lambda ctx, **kw: days_tracker_status(**kw),
+            timeout_sec=30,
+        ),
+        ToolEntry(
+            name="days_tracker_add_stay",
+            schema={
+                "name": "days_tracker_add_stay",
+                "description": "Manually add a country stay to the tracker (for trips not in flights.json).",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "country_code": {
+                            "type": "string",
+                            "description": "ISO 2-letter country code, e.g. PT, RU, GB",
+                        },
+                        "from_date": {
+                            "type": "string",
+                            "description": "Start date YYYY-MM-DD (inclusive)",
+                        },
+                        "to_date": {
+                            "type": "string",
+                            "description": "End date YYYY-MM-DD (exclusive, day of departure)",
+                        },
+                        "note": {
+                            "type": "string",
+                            "description": "Optional description",
+                        },
+                    },
+                    "required": ["country_code", "from_date", "to_date"],
+                },
+            },
+            handler=lambda ctx, **kw: days_tracker_add_stay(**kw),
+            timeout_sec=30,
+        ),
     ]

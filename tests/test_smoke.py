@@ -116,6 +116,7 @@ EXPECTED_TOOLS = [
     "analyze_screenshot", "vlm_query", "generate_image",
     # Domain-specific
     "check_ski_queue",
+    "days_tracker_status", "days_tracker_add_stay",
     # Message routing
     "forward_to_worker",
     # Context management
