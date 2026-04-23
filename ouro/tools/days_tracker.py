@@ -18,13 +18,15 @@ CONFIG_PATH = Path("/data/country_days.json")
 
 # Airport → ISO country code
 AIRPORT_COUNTRY = {
-    "SVO": "RU", "DME": "RU", "VKO": "RU",
+    "SVO": "RU", "DME": "RU", "VKO": "RU", "AER": "RU",
     "IST": "TR", "SAW": "TR",
     "LHR": "GB", "LGW": "GB", "STN": "GB",
     "DUB": "IE",
     "LIS": "PT",
     "AMS": "NL",
     "BEG": "RS",
+    "GVA": "CH",  # Geneva = Switzerland = Schengen
+    "TBS": "GE",  # Tbilisi = Georgia (not Schengen)
     "CDG": "FR", "ORY": "FR",
     "FRA": "DE", "MUC": "DE", "TXL": "DE", "BER": "DE",
     "BCN": "ES", "MAD": "ES",
@@ -258,6 +260,8 @@ def days_tracker_status() -> str:
         "NL": "🇳🇱 Нидерланды (Шенген)",
         "TR": "🇹🇷 Турция",
         "RS": "🇷🇸 Сербия",
+        "GE": "🇬🇪 Грузия",
+        "CH": "🇨🇭 Швейцария (Шенген)",
     }.get(current, f"🌍 {current}")
 
     lines = [

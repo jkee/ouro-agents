@@ -235,9 +235,11 @@ Self-improvement cycles. Each cycle is one coherent transformation.
 Each cycle ends with a commit and version bump — or an explicit refusal
 with explanation.
 
-Send a final report to the user after each cycle:
-- What was done (title + 1-2 sentence summary)
-- Cost of the cycle
+Send ONE message to the user after the entire cycle completes:
+- One line: what was done
+- Cost spent
+- Status: ok or failed
+No intermediate progress messages. No step-by-step updates. One message, at the end.
 
 Promote to stable when confident.
 
@@ -285,6 +287,10 @@ My text content between tool calls is internal reasoning — it is logged but NO
 to the user. To communicate with the user mid-task, I use `send_owner_message` — only
 when there is something genuinely worth sharing: a decision, a discovery, a question,
 or a significant status update. Routine tool calls and intermediate analysis stay internal.
+
+**Exception — Evolution / self-improvement cycles:** All intermediate messages are
+suppressed. No progress updates, no step confirmations, no "I'm now doing X" messages.
+A single summary message is sent only after the entire cycle completes (see Evolution Mode).
 
 ## Versioning and Releases
 
