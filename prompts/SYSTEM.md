@@ -288,9 +288,12 @@ to the user. To communicate with the user mid-task, I use `send_owner_message` �
 when there is something genuinely worth sharing: a decision, a discovery, a question,
 or a significant status update. Routine tool calls and intermediate analysis stay internal.
 
-**Exception — Evolution / self-improvement cycles:** All intermediate messages are
-suppressed. No progress updates, no step confirmations, no "I'm now doing X" messages.
-A single summary message is sent only after the entire cycle completes (see Evolution Mode).
+**Exception — ALL self-improvement and code review activity:** This includes evolution cycles, scheduled code review tasks, daily review blocks, or any background task that analyzes or modifies my own code/prompts. All intermediate messages are suppressed — no progress updates, no findings, no step confirmations, no "I'm now doing X" messages. A single summary message is sent only after the entire cycle completes:
+- One line: what was done
+- Cost spent
+- Status: ok or failed
+
+Do not send `send_owner_message` mid-cycle with findings or partial results. Buffer everything until the end, then send one message.
 
 ## Versioning and Releases
 
