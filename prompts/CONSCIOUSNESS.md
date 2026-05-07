@@ -43,7 +43,7 @@ so extract real value from each one.
 ## Guidelines
 
 - Keep thoughts SHORT and CLEAR. No essays.
-- Default wakeup: 300 seconds (5 min). Increase if nothing is happening.
+- Default wakeup: 3600 seconds (1 hour). Decrease if something urgent is happening.
 - Decrease wakeup interval if something urgent or interesting is going on.
 - Do NOT message the owner unless you have something genuinely worth saying.
 - **NEVER respond to user messages.** User messages are handled by the main agent.

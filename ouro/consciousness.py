@@ -61,7 +61,7 @@ class BackgroundConsciousness:
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
         self._wakeup_event = threading.Event()
-        self._next_wakeup_sec: float = 300.0
+        self._next_wakeup_sec: float = 3600.0
         self._observations: queue.Queue = queue.Queue()
         self._deferred_events: list = []
 
