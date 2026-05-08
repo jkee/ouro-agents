@@ -514,13 +514,33 @@ def per_task_cost_summary(max_tasks: int = 10, tail_bytes: int = 512_000) -> Lis
                             tasks[tid]["model"] = model
 
                     elif etype == "task_done":
+                        existing = task_done_meta.get(tid, {})
                         task_done_meta[tid] = {
-                            "task_type": str(event.get("task_type") or ""),
-                            "duration_sec": float(event.get("duration_sec") or 0),
-                            "description": str(event.get("description") or ""),
+                            "task_type": str(event.get("task_type") or existing.get("task_type", "")),
+                            "duration_sec": float(event.get("duration_sec") or existing.get("duration_sec", 0)),
+                            "description": str(event.get("description") or existing.get("description", "")),
                             "ts_end": ts,
                             "total_rounds": int(event.get("total_rounds") or 0),
                         }
+
+                    elif etype == "task_metrics":
+                        # task_metrics has duration_sec that task_done lacks
+                        tid_m = str(event.get("task_id") or "unknown")
+                        if tid_m not in task_done_meta:
+                            task_done_meta[tid_m] = {}
+                        if event.get("duration_sec"):
+                            task_done_meta[tid_m]["duration_sec"] = float(event.get("duration_sec") or 0)
+                        if event.get("task_type") and not task_done_meta[tid_m].get("task_type"):
+                            task_done_meta[tid_m]["task_type"] = str(event.get("task_type") or "")
+
+                    elif etype == "schedule_task":
+                        tid_s = str(event.get("task_id") or "")
+                        if tid_s:
+                            desc = str(event.get("description") or "")
+                            if desc:
+                                if tid_s not in task_done_meta:
+                                    task_done_meta[tid_s] = {}
+                                task_done_meta[tid_s]["description"] = desc[:120]  # truncate to 120 chars
 
                 except (json.JSONDecodeError, ValueError, TypeError):
                     continue
