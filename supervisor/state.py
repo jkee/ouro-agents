@@ -465,17 +465,18 @@ def model_breakdown(st: Dict[str, Any]) -> Dict[str, Dict[str, float]]:
 def per_task_cost_summary(max_tasks: int = 10, tail_bytes: int = 512_000) -> List[Dict[str, Any]]:
     """Return cost summary for recent tasks from events.jsonl.
 
-    Only reads the last `tail_bytes` of the file to avoid scanning
-    megabytes of history on every LLM round.
+    Reads the last `tail_bytes` of the file. Combines llm_usage events
+    (for cost/rounds/model) with task_done events (for type, duration, description).
 
-    Returns list of dicts: [{task_id, cost, rounds, model}, ...]
-    sorted by cost descending, limited to max_tasks.
+    Returns list of dicts sorted by cost descending, limited to max_tasks:
+    [{task_id, cost, rounds, model, task_type, duration_sec, description, ts_start, ts_end}, ...]
     """
     events_path = DRIVE_ROOT / "logs" / "events.jsonl"
     if not events_path.exists():
         return []
 
     tasks: Dict[str, Dict[str, Any]] = {}
+    task_done_meta: Dict[str, Dict[str, Any]] = {}
     try:
         file_size = events_path.stat().st_size
         with events_path.open("r", encoding="utf-8") as f:
@@ -488,18 +489,51 @@ def per_task_cost_summary(max_tasks: int = 10, tail_bytes: int = 512_000) -> Lis
                     continue
                 try:
                     event = json.loads(line)
-                    if event.get("type") != "llm_usage":
-                        continue
-                    tid = event.get("task_id") or "unknown"
-                    cost = float(event.get("cost", 0) or 0)
-                    if tid not in tasks:
-                        tasks[tid] = {"task_id": tid, "cost": 0.0, "rounds": 0, "model": event.get("model", "")}
-                    tasks[tid]["cost"] += cost
-                    tasks[tid]["rounds"] += 1
+                    etype = event.get("type")
+                    tid = str(event.get("task_id") or "unknown")
+                    ts = event.get("ts", "")
+
+                    if etype == "llm_usage":
+                        cost = float(event.get("cost", 0) or 0)
+                        model = event.get("model", "")
+                        if tid not in tasks:
+                            tasks[tid] = {
+                                "task_id": tid,
+                                "cost": 0.0,
+                                "rounds": 0,
+                                "model": model,
+                                "ts_start": ts,
+                            }
+                        tasks[tid]["cost"] += cost
+                        tasks[tid]["rounds"] += 1
+                        # track earliest timestamp
+                        if ts and ts < tasks[tid].get("ts_start", ts):
+                            tasks[tid]["ts_start"] = ts
+                        # keep last model used
+                        if model:
+                            tasks[tid]["model"] = model
+
+                    elif etype == "task_done":
+                        task_done_meta[tid] = {
+                            "task_type": str(event.get("task_type") or ""),
+                            "duration_sec": float(event.get("duration_sec") or 0),
+                            "description": str(event.get("description") or ""),
+                            "ts_end": ts,
+                            "total_rounds": int(event.get("total_rounds") or 0),
+                        }
+
                 except (json.JSONDecodeError, ValueError, TypeError):
                     continue
     except Exception:
         log.warning("Failed to calculate per-task cost summary", exc_info=True)
+
+    # Merge task_done metadata into tasks dict
+    for tid, meta in task_done_meta.items():
+        if tid in tasks:
+            tasks[tid].update(meta)
+        else:
+            # task_done exists but no llm_usage found in tail — include with 0 cost
+            tasks[tid] = {"task_id": tid, "cost": 0.0, "rounds": 0, "model": "", **meta}
 
     sorted_tasks = sorted(tasks.values(), key=lambda x: x["cost"], reverse=True)
     return sorted_tasks[:max_tasks]

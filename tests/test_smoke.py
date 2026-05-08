@@ -117,6 +117,7 @@ EXPECTED_TOOLS = [
     # Domain-specific
     "check_ski_queue",
     "days_tracker_status", "days_tracker_add_stay",
+    "get_task_costs",
     # Message routing
     "forward_to_worker",
     # Context management

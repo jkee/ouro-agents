@@ -147,6 +147,29 @@ def handle_supervisor_command(
             breakdown_parts = [f"{cat}=${cost:.2f}" for cat, cost in sorted_cats if cost > 0]
             if breakdown_parts:
                 lines.append(f"  Breakdown: {', '.join(breakdown_parts)}")
+
+        # Top expensive tasks
+        from supervisor.state import per_task_cost_summary
+        top_tasks = per_task_cost_summary(max_tasks=5)
+        if top_tasks:
+            lines.append("\n📋 Top tasks by cost:")
+            for t in top_tasks:
+                tid = t["task_id"][:8]
+                cost = t["cost"]
+                rounds = t.get("rounds", 0)
+                ttype = t.get("task_type", "") or t.get("task_type", "")
+                desc = t.get("description", "")
+                dur = t.get("duration_sec", 0)
+                # Build compact label
+                label_parts = []
+                if ttype:
+                    label_parts.append(ttype)
+                if desc:
+                    label_parts.append(desc[:40] + ("…" if len(desc) > 40 else ""))
+                label = " · ".join(label_parts) if label_parts else tid
+                dur_str = f" {dur:.0f}s" if dur else ""
+                lines.append(f"  {tid}: ${cost:.3f} ({rounds}r{dur_str}) {label}")
+
         send_with_budget(chat_id, "\n".join(lines))
         return True
 
