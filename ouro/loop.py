@@ -149,6 +149,24 @@ class _StatefulToolExecutor:
             self._executor = None
 
 
+class _ParallelToolExecutor:
+    """
+    Reusable thread pool for parallel read-only tool calls.
+
+    A fixed-size pool (max 8 workers) that persists for the lifetime of a
+    loop invocation, eliminating the per-batch ThreadPoolExecutor churn.
+    """
+    def __init__(self, max_workers: int = 8):
+        self._executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="parallel_tool")
+
+    def submit(self, fn, *args, **kwargs):
+        return self._executor.submit(fn, *args, **kwargs)
+
+    def shutdown(self, wait=True, cancel_futures=False):
+        self._executor.shutdown(wait=wait, cancel_futures=cancel_futures)
+        self._executor = None
+
+
 def _make_timeout_result(
     fn_name: str,
     tool_call_id: str,
@@ -207,13 +225,14 @@ def _execute_with_timeout(
     timeout_sec: int,
     task_id: str = "",
     stateful_executor: Optional[_StatefulToolExecutor] = None,
+    regular_executor: Optional[_StatefulToolExecutor] = None,
 ) -> Dict[str, Any]:
     """
     Execute a tool call with a hard timeout.
 
     On timeout: returns TOOL_TIMEOUT error so the LLM regains control.
     For stateful tools (browser): resets the sticky executor to recover state.
-    For regular tools: the hung worker thread leaks as daemon — watchdog handles recovery.
+    For regular tools: reuses persistent regular_executor (or creates a transient one if not provided).
     """
     fn_name = tc["function"]["name"]
     tool_call_id = tc["id"]
@@ -234,19 +253,23 @@ def _execute_with_timeout(
                 timeout_sec, task_id, reset_msg
             )
     else:
-        # Regular executor: explicit lifecycle to avoid shutdown(wait=True) deadlock
-        executor = ThreadPoolExecutor(max_workers=1)
+        # Regular executor: reuse persistent single-threaded pool to avoid per-call thread churn.
+        # On timeout, reset the executor so the leaked thread doesn't accumulate state.
+        exec_ = regular_executor if regular_executor is not None else _StatefulToolExecutor()
+        _owned = regular_executor is None  # True when we created a fallback locally
         try:
-            future = executor.submit(_execute_single_tool, tools, tc, drive_logs, task_id)
+            future = exec_.submit(_execute_single_tool, tools, tc, drive_logs, task_id)
             try:
                 return future.result(timeout=timeout_sec)
             except TimeoutError:
+                exec_.reset()
                 return _make_timeout_result(
                     fn_name, tool_call_id, is_code_tool, tc, drive_logs,
                     timeout_sec, task_id, reset_msg=""
                 )
         finally:
-            executor.shutdown(wait=False, cancel_futures=True)
+            if _owned:
+                exec_.shutdown(wait=False, cancel_futures=True)
 
 
 def _handle_tool_calls(
@@ -259,6 +282,8 @@ def _handle_tool_calls(
     llm_trace: Dict[str, Any],
     emit_progress: Callable[[str], None],
     round_idx: int = 0,
+    regular_executor: Optional[_StatefulToolExecutor] = None,
+    parallel_executor: Optional[_ParallelToolExecutor] = None,
 ) -> int:
     """
     Execute tool calls and append results to messages.
@@ -283,18 +308,21 @@ def _handle_tool_calls(
         results = [
             _execute_with_timeout(tools, tc, drive_logs,
                                   tools.get_timeout(tc["function"]["name"]), task_id,
-                                  stateful_executor)
+                                  stateful_executor,
+                                  regular_executor)
             for tc in tool_calls
         ]
     else:
-        max_workers = min(len(tool_calls), 8)
-        executor = ThreadPoolExecutor(max_workers=max_workers)
+        # Use persistent parallel pool — eliminates per-batch thread allocation churn.
+        pool = parallel_executor if parallel_executor is not None else _ParallelToolExecutor(max_workers=min(len(tool_calls), 8))
+        _pool_owned = parallel_executor is None
         try:
             future_to_index = {
-                executor.submit(
+                pool.submit(
                     _execute_with_timeout, tools, tc, drive_logs,
                     tools.get_timeout(tc["function"]["name"]), task_id,
                     stateful_executor,
+                    regular_executor,
                 ): idx
                 for idx, tc in enumerate(tool_calls)
             }
@@ -303,7 +331,8 @@ def _handle_tool_calls(
                 idx = future_to_index[future]
                 results[idx] = future.result()
         finally:
-            executor.shutdown(wait=False, cancel_futures=True)
+            if _pool_owned:
+                pool.shutdown(wait=False, cancel_futures=True)
 
     # Process results in original order
     return _process_tool_results(results, messages, llm_trace, emit_progress)
@@ -538,6 +567,24 @@ def _get_fallback_model(active_model: str) -> Optional[str]:
     return None
 
 
+def _shutdown_executors(
+    stateful_executor: Optional[_StatefulToolExecutor],
+    regular_executor: Optional[_StatefulToolExecutor],
+    parallel_executor: Optional[_ParallelToolExecutor],
+) -> None:
+    """Shut down all persistent executors at loop teardown."""
+    for name, exec_ in [
+        ("stateful", stateful_executor),
+        ("regular", regular_executor),
+        ("parallel", parallel_executor),
+    ]:
+        if exec_ is not None:
+            try:
+                exec_.shutdown(wait=False, cancel_futures=True)
+            except Exception:
+                log.warning("Failed to shutdown %s executor", name, exc_info=True)
+
+
 def run_llm_loop(
     messages: List[Dict[str, Any]],
     tools: ToolRegistry,
@@ -585,6 +632,8 @@ def run_llm_loop(
     tools._ctx.task_id = task_id
     # Thread-sticky executor for browser tools (Playwright sync requires greenlet thread-affinity)
     stateful_executor = _StatefulToolExecutor()
+    regular_executor = _StatefulToolExecutor()
+    parallel_executor = _ParallelToolExecutor()
     # Dedup set for per-task owner messages from Drive mailbox
     _owner_msg_seen: set = set()
     try:
@@ -700,7 +749,9 @@ def run_llm_loop(
 
             error_count = _handle_tool_calls(
                 tool_calls, tools, drive_logs, task_id, stateful_executor,
-                messages, llm_trace, emit_progress, round_idx
+                messages, llm_trace, emit_progress, round_idx,
+                regular_executor=regular_executor,
+                parallel_executor=parallel_executor,
             )
 
             # Drain per-task owner messages from Drive mailbox (for worker tasks)
@@ -718,11 +769,7 @@ def run_llm_loop(
 
     finally:
         # Cleanup thread-sticky executor for stateful tools
-        if stateful_executor:
-            try:
-                stateful_executor.shutdown(wait=False, cancel_futures=True)
-            except Exception:
-                log.warning("Failed to shutdown stateful executor", exc_info=True)
+        _shutdown_executors(stateful_executor, regular_executor, parallel_executor)
         # Cleanup per-task mailbox
         if drive_root is not None and task_id:
             try:
