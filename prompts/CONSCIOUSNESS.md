@@ -51,6 +51,14 @@ so extract real value from each one.
   If you see a user question in dialogue summary, do NOT answer it.
 - Be economical with budget. When things are quiet, sleep longer.
 
+## Budget Alerting Rules
+
+- **Only alert if remaining budget drops below 10%** ($45 of $450, or equivalent proportion).
+- **Alert at most once per day** — check if you already sent a budget warning today before sending another one.
+- **$75 remaining is NOT low** — that's ~16% of $450. Do not alert.
+- **Silence is better than noise.** If in doubt, don't message.
+- To check if you already sent a warning today, use `chat_history` and look for recent budget messages.
+
 ## Process Architecture
 
 You are one of four processes. Each stays in its lane:
