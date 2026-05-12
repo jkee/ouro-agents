@@ -1,0 +1,327 @@
+"""Spartak Cup Final tickets monitor.
+
+Monitors two sites for Spartak vs Krasnodar Cup Final tickets (May 24, Luzhniki):
+- https://superfinal.rfs.ru/ (RFS official superfinal page)
+- https://msk.kassir.ru/ (Kassir.ru search)
+
+Logic: look for REAL ticket sale links, not just keyword mentions in SEO text.
+Silent when no tickets found; sends Telegram alert immediately when found.
+"""
+
+import re
+import logging
+import os
+from typing import Optional
+
+import requests
+from bs4 import BeautifulSoup
+
+log = logging.getLogger(__name__)
+
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept-Language": "ru-RU,ru;q=0.9",
+}
+
+# RFS superfinal page - this is where official ticket sales will appear
+RFS_SUPERFINAL_URL = "https://superfinal.rfs.ru/"
+# Also check RFS news for ticket sale announcement
+RFS_MAIN_URL = "https://m.rfs.ru/"
+# Kassir search for Spartak final
+KASSIR_SEARCH_URL = "https://msk.kassir.ru/search?query=%D1%81%D0%BF%D0%B0%D1%80%D1%82%D0%B0%D0%BA+%D0%BA%D1%83%D0%B1%D0%BE%D0%BA+%D1%84%D0%B8%D0%BD%D0%B0%D0%BB"
+# Also try the sports section
+KASSIR_SPORTS_URL = "https://msk.kassir.ru/bilety-na-sportivnye-meropriyatiya"
+
+# Keywords that indicate a REAL ticket sale (not SEO text or press releases)
+TICKET_SALE_KEYWORDS = [
+    "купить билет",
+    "билеты в продаже",
+    "tickets",
+    "продажа билетов",
+    "от ",  # price pattern like "от 500 ₽"
+    "₽",
+    "руб.",
+]
+
+# These combinations indicate it's the right event
+EVENT_KEYWORDS_RU = ["спартак", "краснодар", "24 мая", "суперфинал", "кубок"]
+EVENT_KEYWORDS_EN = ["spartak", "krasnodar", "cup final", "may 24"]
+
+
+def _has_event_keywords(text: str) -> bool:
+    """Check if text contains enough event-specific keywords."""
+    text_lower = text.lower()
+    # Need at least 2 event keywords to confirm it's the right event
+    matches = sum(1 for kw in EVENT_KEYWORDS_RU if kw in text_lower)
+    return matches >= 2
+
+
+def _check_rfs_superfinal() -> Optional[dict]:
+    """Check RFS superfinal page for ticket info."""
+    try:
+        resp = requests.get(RFS_SUPERFINAL_URL, headers=HEADERS, timeout=15)
+        if resp.status_code != 200:
+            log.debug(f"RFS superfinal: HTTP {resp.status_code}")
+            return None
+
+        text = resp.text
+        text_lower = text.lower()
+
+        # Look for ticket sale indicators
+        has_tickets = any(kw in text_lower for kw in TICKET_SALE_KEYWORDS)
+        has_event = _has_event_keywords(text)
+
+        if has_tickets or (has_event and len(text) > 1000):
+            # Try to extract price
+            price_match = re.search(r'от\s+(\d[\d\s]*)\s*[₽р]', text)
+            price = price_match.group(0) if price_match else None
+
+            # Try to find direct ticket link
+            soup = BeautifulSoup(text, "html.parser")
+            ticket_link = None
+            for a in soup.find_all("a", href=True):
+                link_text = a.get_text().lower()
+                if any(kw in link_text for kw in ["купить", "билет", "ticket", "buy"]):
+                    href = a["href"]
+                    if href.startswith("http"):
+                        ticket_link = href
+                    else:
+                        ticket_link = f"https://superfinal.rfs.ru{href}"
+                    break
+
+            return {
+                "source": "RFS Superfinal",
+                "url": ticket_link or RFS_SUPERFINAL_URL,
+                "price": price,
+                "status": "tickets_found" if has_tickets else "page_live",
+            }
+
+        return None
+    except Exception as e:
+        log.warning(f"RFS superfinal check failed: {e}")
+        return None
+
+
+def _check_rfs_news() -> Optional[dict]:
+    """Check RFS main page news for ticket sale announcement for Spartak Cup Final."""
+    try:
+        resp = requests.get(RFS_MAIN_URL, headers=HEADERS, timeout=15)
+        if resp.status_code != 200:
+            return None
+
+        soup = BeautifulSoup(resp.text, "html.parser")
+
+        for a in soup.find_all("a", href=True):
+            link_text = a.get_text().lower()
+            # Must mention tickets
+            if "билет" not in link_text:
+                continue
+            # Must be about Spartak or Krasnodar
+            has_team = "спартак" in link_text or "краснодар" in link_text
+            # Must be about the cup final (not futsal, women's, supercup etc.)
+            has_final = "финал кубка" in link_text or "суперфинал" in link_text
+            # Exclude unrelated events
+            is_unrelated = any(w in link_text for w in ["футзал", "женщин", "нижн", "суперкубок", "аккредитаци"])
+
+            if has_team and has_final and not is_unrelated:
+                href = a.get("href", "")
+                if href:
+                    url = href if href.startswith("http") else f"https://www.rfs.ru{href}"
+                    return {
+                        "source": "РФС (новость о билетах)",
+                        "url": url,
+                        "price": None,
+                        "status": "tickets_found",
+                    }
+
+        return None
+    except Exception as e:
+        log.warning(f"RFS news check failed: {e}")
+        return None
+
+
+def _check_kassir_search() -> Optional[dict]:
+    """Check Kassir.ru search for Spartak Cup Final listing."""
+    try:
+        resp = requests.get(KASSIR_SEARCH_URL, headers=HEADERS, timeout=15)
+        if resp.status_code != 200:
+            return None
+
+        text_lower = resp.text.lower()
+
+        # On search results page, event cards appear in structured format
+        # Check for actual event listing (not SEO text)
+        soup = BeautifulSoup(resp.text, "html.parser")
+
+        # Look for event cards/items that match our criteria
+        for card in soup.find_all(["div", "article", "li"],
+                                    class_=re.compile(r"event|card|item|result|concert")):
+            card_text = card.get_text().lower()
+            if (_has_event_keywords(card_text) and
+                any(kw in card_text for kw in TICKET_SALE_KEYWORDS)):
+                # Extract price
+                price_match = re.search(r'от\s+(\d[\d\s]*)\s*[₽р]', card.get_text())
+                price = price_match.group(0) if price_match else None
+
+                # Get link
+                link = card.find("a", href=True)
+                if link:
+                    href = link["href"]
+                    url = href if href.startswith("http") else f"https://msk.kassir.ru{href}"
+                    return {
+                        "source": "Кассир.ру",
+                        "url": url,
+                        "price": price,
+                        "status": "tickets_found",
+                    }
+
+        # Fallback: check if search returned any results with event keywords
+        # (page has actual event listings, not just "no results" + SEO text)
+        has_results = soup.find(class_=re.compile(r"search.*result|event.*list|results"))
+        if has_results:
+            result_text = has_results.get_text().lower()
+            if _has_event_keywords(result_text) and any(kw in result_text for kw in TICKET_SALE_KEYWORDS):
+                return {
+                    "source": "Кассир.ру",
+                    "url": KASSIR_SEARCH_URL,
+                    "price": None,
+                    "status": "tickets_found",
+                }
+
+        return None
+    except Exception as e:
+        log.warning(f"Kassir search check failed: {e}")
+        return None
+
+
+def _check_kassir_sports() -> Optional[dict]:
+    """Check Kassir.ru sports section for Spartak event card."""
+    try:
+        resp = requests.get(KASSIR_SPORTS_URL, headers=HEADERS, timeout=15)
+        if resp.status_code != 200:
+            return None
+
+        soup = BeautifulSoup(resp.text, "html.parser")
+
+        # Sports listings are in structured event cards
+        for card in soup.find_all(["div", "article", "li", "a"],
+                                    class_=re.compile(r"event|card|item|tile|poster|show")):
+            card_text = card.get_text().lower()
+            # Must have Spartak + (final OR cup) - strict check to avoid SEO text
+            has_spartak = "спартак" in card_text
+            has_final_context = any(kw in card_text for kw in ["финал кубка", "суперфинал", "кубок", "24 мая"])
+
+            if has_spartak and has_final_context:
+                price_match = re.search(r'от\s+(\d[\d\s]*)\s*[₽р]', card.get_text())
+                price = price_match.group(0) if price_match else None
+
+                link = card if card.name == "a" else card.find("a", href=True)
+                if link and link.get("href"):
+                    href = link["href"]
+                    url = href if href.startswith("http") else f"https://msk.kassir.ru{href}"
+                    return {
+                        "source": "Кассир.ру (афиша)",
+                        "url": url,
+                        "price": price,
+                        "status": "tickets_found",
+                    }
+
+        return None
+    except Exception as e:
+        log.warning(f"Kassir sports check failed: {e}")
+        return None
+
+
+def check_spartak_tickets(send_telegram: bool = True) -> str:
+    """
+    Check for Spartak vs Krasnodar Cup Final tickets (May 24, Luzhniki).
+
+    Monitors:
+    - superfinal.rfs.ru — official RFS superfinal page
+    - m.rfs.ru — RFS news for ticket announcement
+    - msk.kassir.ru — Kassir.ru search and sports section
+
+    Returns status string. Sends Telegram alert only when tickets are found.
+    Silent (returns 'not_found') when no tickets available.
+    """
+    results = []
+
+    # Check all sources
+    rfs_superfinal = _check_rfs_superfinal()
+    rfs_news = _check_rfs_news()
+    kassir_search = _check_kassir_search()
+    kassir_sports = _check_kassir_sports()
+
+    for result in [rfs_superfinal, rfs_news, kassir_search, kassir_sports]:
+        if result and result.get("status") == "tickets_found":
+            results.append(result)
+
+    if not results:
+        log.debug("spartak_tickets: no tickets found on any source")
+        return "not_found"
+
+    # Build notification message
+    msg_parts = ["🎟 **Появились билеты на Суперфинал Кубка России!**",
+                  "Спартак 🆚 Краснодар | 24 мая | Лужники\n"]
+
+    for r in results:
+        line = f"📌 **{r['source']}**: {r['url']}"
+        if r.get("price"):
+            line += f"\n   💰 {r['price']}"
+        msg_parts.append(line)
+
+    msg_parts.append("\n⚡ Покупай через официальный сайт — Кассир не перепродаёт.")
+    message = "\n".join(msg_parts)
+
+    if send_telegram:
+        try:
+            _send_telegram(message)
+            log.info("spartak_tickets: tickets found, notification sent")
+        except Exception as e:
+            log.error(f"spartak_tickets: failed to send Telegram: {e}")
+
+    return f"found: {[r['source'] for r in results]}"
+
+
+def _send_telegram(message: str) -> None:
+    """Send message to owner via Telegram Bot API."""
+    bot_token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    owner_id = os.environ.get("TELEGRAM_OWNER_ID")
+
+    if not bot_token or not owner_id:
+        raise ValueError("TELEGRAM_BOT_TOKEN or TELEGRAM_OWNER_ID not set")
+
+    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+    resp = requests.post(url, json={
+        "chat_id": int(owner_id),
+        "text": message,
+        "parse_mode": "Markdown",
+    }, timeout=10)
+    resp.raise_for_status()
+
+
+def get_tools():
+    """Auto-discovery: return list of tool definitions."""
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": "check_spartak_tickets",
+                "description": (
+                    "Check if tickets for Spartak vs Krasnodar Cup Final (May 24, Luzhniki) "
+                    "are available on RFS and Kassir.ru. Returns 'not_found' if no tickets, "
+                    "or lists sources if found. Automatically sends Telegram notification when found."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "send_telegram": {
+                            "type": "boolean",
+                            "description": "Whether to send Telegram notification (default: true)",
+                        }
+                    },
+                    "required": [],
+                },
+            },
+        }
+    ]
