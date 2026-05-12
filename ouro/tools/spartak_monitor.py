@@ -9,6 +9,8 @@ from typing import Any
 
 import requests
 
+from ouro.tools.registry import ToolEntry, ToolContext
+
 logger = logging.getLogger(__name__)
 
 URL = "https://www.sports.ru/football/club/spartak/calendar/"
@@ -193,11 +195,15 @@ def check_spartak_matches(send_telegram: bool = True) -> str:
     return msg
 
 
-def get_tools() -> list[dict[str, Any]]:
+def _check_spartak_matches_handler(ctx: ToolContext, send_telegram: bool = True) -> str:
+    return check_spartak_matches(send_telegram=send_telegram)
+
+
+def get_tools() -> list[ToolEntry]:
     return [
-        {
-            "type": "function",
-            "function": {
+        ToolEntry(
+            name="check_spartak_matches",
+            schema={
                 "name": "check_spartak_matches",
                 "description": (
                     "Fetch upcoming Spartak Moscow football match schedule from sports.ru. "
@@ -214,6 +220,6 @@ def get_tools() -> list[dict[str, Any]]:
                     "required": [],
                 },
             },
-            "handler": check_spartak_matches,
-        }
+            handler=_check_spartak_matches_handler,
+        )
     ]

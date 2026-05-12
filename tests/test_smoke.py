@@ -116,6 +116,8 @@ EXPECTED_TOOLS = [
     "analyze_screenshot", "vlm_query", "generate_image",
     # Domain-specific
     "check_ski_queue",
+    "check_spartak_tickets",
+    "check_spartak_matches",
     "days_tracker_status", "days_tracker_add_stay",
     "get_task_costs",
     # Message routing

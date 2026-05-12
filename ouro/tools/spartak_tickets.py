@@ -16,6 +16,8 @@ from typing import Optional
 import requests
 from bs4 import BeautifulSoup
 
+from ouro.tools.registry import ToolEntry, ToolContext
+
 log = logging.getLogger(__name__)
 
 HEADERS = {
@@ -300,12 +302,16 @@ def _send_telegram(message: str) -> None:
     resp.raise_for_status()
 
 
+def _check_spartak_tickets_handler(ctx: ToolContext, send_telegram: bool = True) -> str:
+    return check_spartak_tickets(send_telegram=send_telegram)
+
+
 def get_tools():
     """Auto-discovery: return list of tool definitions."""
     return [
-        {
-            "type": "function",
-            "function": {
+        ToolEntry(
+            name="check_spartak_tickets",
+            schema={
                 "name": "check_spartak_tickets",
                 "description": (
                     "Check if tickets for Spartak vs Krasnodar Cup Final (May 24, Luzhniki) "
@@ -323,5 +329,6 @@ def get_tools():
                     "required": [],
                 },
             },
-        }
+            handler=_check_spartak_tickets_handler,
+        )
     ]
