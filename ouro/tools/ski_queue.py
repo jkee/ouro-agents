@@ -17,6 +17,8 @@ from ouro.tools.registry import ToolContext, ToolEntry
 log = logging.getLogger(__name__)
 
 _VLM_MODEL = "anthropic/claude-sonnet-4-6"
+_API_URL = "https://sochi.camera/vse-kamery/cam-402/?format=json"
+_BASE_URL = "https://sochi.camera"
 
 _QUEUE_PROMPT = """\
 This is a frame from a ski lift camera at KD Edelweiss, 1472m, Rosa Khutor.
@@ -42,13 +44,13 @@ Respond ONLY with the JSON, no other text.\
 """
 
 
-def _get_hls_url() -> str:
-    """Fetch current HLS stream URL from sochi.camera API (with retry)."""
+def _get_api_data() -> dict:
+    """Fetch API data from sochi.camera. Returns dict with hls_url, snapshot_url, image_updated_at."""
     last_exc: Exception = RuntimeError("No attempts made")
     for attempt in range(3):
         try:
             r = requests.get(
-                "https://sochi.camera/vse-kamery/cam-402/?format=json",
+                _API_URL,
                 headers={
                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
                     "Cookie": "player=402",
@@ -56,10 +58,8 @@ def _get_hls_url() -> str:
                 },
                 timeout=15,
             )
-            # Non-retryable: 4xx client errors
             if 400 <= r.status_code < 500:
                 r.raise_for_status()
-            # Retryable: 5xx server errors
             if r.status_code >= 500:
                 last_exc = RuntimeError(f"Server error {r.status_code}")
                 if attempt < 2:
@@ -67,15 +67,41 @@ def _get_hls_url() -> str:
                 continue
             r.raise_for_status()
             d = json.loads(r.content.decode("utf-8-sig"))
-            url = d.get("hd_url") or d.get("sd_url")
-            if not url:
-                raise RuntimeError(f"No stream URL in API response. Keys: {list(d.keys())}")
-            return url
+
+            hls_url = d.get("hd_url") or d.get("sd_url") or ""
+
+            snapshot_url = ""
+            images = d.get("imagesUrl") or {}
+            img_path = images.get("large") or images.get("medium") or images.get("url")
+            if img_path:
+                snapshot_url = _BASE_URL + img_path
+
+            image_updated_at = d.get("image_updated_at")
+
+            return {
+                "hls_url": hls_url,
+                "snapshot_url": snapshot_url,
+                "image_updated_at": image_updated_at,
+            }
         except (requests.ConnectionError, requests.Timeout) as e:
             last_exc = e
             if attempt < 2:
                 time.sleep(2 ** attempt)
-    raise RuntimeError(f"Failed to get HLS URL after 3 attempts: {last_exc}")
+    raise RuntimeError(f"Failed to get API data after 3 attempts: {last_exc}")
+
+
+def _fetch_snapshot(snapshot_url: str) -> bytes:
+    """Download static JPEG snapshot from sochi.camera. Returns JPEG bytes."""
+    r = requests.get(
+        snapshot_url,
+        headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+            "Referer": "https://sochi.camera/vse-kamery/cam-402/",
+        },
+        timeout=15,
+    )
+    r.raise_for_status()
+    return r.content
 
 
 def _capture_frame(hls_url: str) -> bytes:
@@ -130,20 +156,52 @@ def _send_photo_telegram(image_bytes: bytes, caption: str, chat_id: int, token: 
 
 
 def _check_ski_queue(ctx: ToolContext, send_telegram: bool = True) -> str:
-    """Main handler: capture frame, analyze queue, optionally send to Telegram."""
-    # 1. Get HLS URL
+    """Main handler: get snapshot or HLS frame, analyze queue, optionally send to Telegram."""
+    # 1. Get API data (HLS URL + snapshot URL + image age)
     try:
-        hls_url = _get_hls_url()
+        api_data = _get_api_data()
     except Exception as e:
-        return f"⚠️ Failed to get HLS URL: {e}"
+        return f"⚠️ Failed to get API data: {e}"
 
-    # 2. Capture frame
-    try:
-        frame_bytes = _capture_frame(hls_url)
-    except subprocess.TimeoutExpired:
-        return "⚠️ ffmpeg timed out after 30 seconds."
-    except Exception as e:
-        return f"⚠️ Frame capture failed: {e}"
+    snapshot_url = api_data.get("snapshot_url", "")
+    hls_url = api_data.get("hls_url", "")
+    image_updated_at = api_data.get("image_updated_at")
+
+    # Compute image age in minutes
+    image_age_minutes: int | None = None
+    if image_updated_at:
+        try:
+            age_sec = time.time() - float(image_updated_at)
+            image_age_minutes = int(age_sec / 60)
+        except (ValueError, TypeError):
+            pass
+
+    # 2. Try snapshot first (fast path ~0.5s), fall back to HLS+ffmpeg
+    frame_bytes: bytes | None = None
+    source_used = "snapshot"
+
+    if snapshot_url:
+        try:
+            data = _fetch_snapshot(snapshot_url)
+            if len(data) >= 5000:
+                frame_bytes = data
+                log.info("ski_queue: using static JPEG snapshot (%d bytes)", len(data))
+            else:
+                log.warning("ski_queue: snapshot too small (%d bytes), falling back to HLS", len(data))
+        except Exception as e:
+            log.warning("ski_queue: snapshot fetch failed (%s), falling back to HLS", e)
+
+    if frame_bytes is None:
+        source_used = "hls"
+        if not hls_url:
+            return "⚠️ No stream URL available and snapshot failed."
+        try:
+            frame_bytes = _capture_frame(hls_url)
+            log.info("ski_queue: using HLS+ffmpeg frame (%d bytes)", len(frame_bytes))
+        except subprocess.TimeoutExpired:
+            return "⚠️ ffmpeg timed out after 30 seconds."
+        except Exception as e:
+            return f"⚠️ Frame capture failed: {e}"
 
     # 3. Analyze with VLM
     try:
@@ -158,11 +216,16 @@ def _check_ski_queue(ctx: ToolContext, send_telegram: bool = True) -> str:
     desc = analysis.get("description", "")
     conditions = analysis.get("conditions", "")
 
+    age_line = ""
+    if image_age_minutes is not None and image_age_minutes > 5:
+        age_line = f"\n📸 ~{image_age_minutes} мин назад"
+
     caption = (
         f"🎿 КД Эдельвейс 1472м\n"
         f"Очередь: {score}/10 (~{people} чел., ждать ~{wait} мин)\n"
         f"{desc}\n"
         f"🌤 {conditions}"
+        f"{age_line}"
     )
 
     # 4. Send to Telegram
@@ -194,6 +257,7 @@ def get_tools() -> List[ToolEntry]:
                 "description": (
                     "Capture a live frame from Rosa Khutor KD Edelweis ski lift camera (cam-402, 1472m) "
                     "and analyze the queue on a 0-10 scale. "
+                    "Uses instant snapshot (0.5s) with HLS fallback via ffmpeg. "
                     "Sends photo + analysis to Telegram by default. "
                     "Returns 'PHOTO_SENT: ...' when photo is delivered to Telegram — do NOT repeat the content to the user in that case."
                 ),
