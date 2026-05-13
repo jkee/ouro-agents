@@ -8,9 +8,11 @@ Logic: look for REAL ticket sale links, not just keyword mentions in SEO text.
 Silent when no tickets found; sends Telegram alert immediately when found.
 """
 
+import json
 import re
 import logging
 import os
+from datetime import date
 from typing import Optional
 
 import requests
@@ -49,6 +51,40 @@ TICKET_SALE_KEYWORDS = [
 EVENT_KEYWORDS_RU = ["спартак", "краснодар", "24 мая", "суперфинал", "кубок"]
 EVENT_KEYWORDS_EN = ["spartak", "krasnodar", "cup final", "may 24"]
 
+# Known ticket vendor domains — presence in an href means a real purchase link
+KNOWN_TICKET_VENDORS = re.compile(
+    r"kassir\.ru|ticketland\.ru|tickets\.ru|concert\.ru|fonbet|kassa\.rambler|sport\.rfs\.ru/ticket",
+    re.IGNORECASE,
+)
+
+# "в продаже NN <month>" — upcoming sale date announcement, not actual sale
+FUTURE_SALE_DATE_RE = re.compile(
+    r"в\s+продаже\s+(\d{1,2})\s+"
+    r"(января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)",
+    re.IGNORECASE,
+)
+_MONTH_NUM = {
+    "января": 1, "февраля": 2, "марта": 3, "апреля": 4, "мая": 5, "июня": 6,
+    "июля": 7, "августа": 8, "сентября": 9, "октября": 10, "ноября": 11, "декабря": 12,
+}
+
+
+def _disable_cron(cron_id: str) -> None:
+    """Disable a cron entry in /data/crons.json by id."""
+    crons_path = "/data/crons.json"
+    try:
+        with open(crons_path, "r") as f:
+            data = json.load(f)
+        for cron in data.get("crons", []):
+            if cron.get("id") == cron_id:
+                cron["enabled"] = False
+                break
+        with open(crons_path, "w") as f:
+            json.dump(data, f, indent=2)
+        log.info(f"spartak_tickets: cron '{cron_id}' disabled in {crons_path}")
+    except Exception as e:
+        log.warning(f"spartak_tickets: failed to disable cron '{cron_id}': {e}")
+
 
 def _has_event_keywords(text: str) -> bool:
     """Check if text contains enough event-specific keywords."""
@@ -59,7 +95,11 @@ def _has_event_keywords(text: str) -> bool:
 
 
 def _check_rfs_superfinal() -> Optional[dict]:
-    """Check RFS superfinal page for ticket info."""
+    """Check RFS superfinal page for ticket info.
+
+    Only returns a result when a real purchase link is present.
+    Keyword mentions like "билеты в продаже 14 мая" are NOT sufficient.
+    """
     try:
         resp = requests.get(RFS_SUPERFINAL_URL, headers=HEADERS, timeout=15)
         if resp.status_code != 200:
@@ -67,38 +107,54 @@ def _check_rfs_superfinal() -> Optional[dict]:
             return None
 
         text = resp.text
-        text_lower = text.lower()
 
-        # Look for ticket sale indicators
-        has_tickets = any(kw in text_lower for kw in TICKET_SALE_KEYWORDS)
-        has_event = _has_event_keywords(text)
+        # Future-date filter: "в продаже NN мая" → announced but not yet on sale
+        future_match = FUTURE_SALE_DATE_RE.search(text)
+        if future_match:
+            day = int(future_match.group(1))
+            month = _MONTH_NUM.get(future_match.group(2).lower(), 0)
+            if month:
+                today = date.today()
+                try:
+                    sale_date = date(today.year, month, day)
+                except ValueError:
+                    sale_date = None
+                if sale_date and sale_date > today:
+                    log.info(
+                        f"RFS superfinal: sale announced for {day} {future_match.group(2)} "
+                        f"(future) — not on sale yet, skipping"
+                    )
+                    return None
 
-        if has_tickets or (has_event and len(text) > 1000):
-            # Try to extract price
-            price_match = re.search(r'от\s+(\d[\d\s]*)\s*[₽р]', text)
-            price = price_match.group(0) if price_match else None
+        # Require an actual clickable purchase link — no link, no alert
+        soup = BeautifulSoup(text, "html.parser")
+        ticket_link = None
+        for a in soup.find_all("a", href=True):
+            href = a["href"]
+            link_text = a.get_text().lower()
+            # Vendor domain in href is a strong signal
+            if KNOWN_TICKET_VENDORS.search(href):
+                ticket_link = href if href.startswith("http") else f"https://superfinal.rfs.ru{href}"
+                break
+            # Purchase keyword in link text + non-trivial href
+            if (any(kw in link_text for kw in ["купить", "билет", "ticket", "buy"])
+                    and href not in ("", "#", "/")):
+                ticket_link = href if href.startswith("http") else f"https://superfinal.rfs.ru{href}"
+                break
 
-            # Try to find direct ticket link
-            soup = BeautifulSoup(text, "html.parser")
-            ticket_link = None
-            for a in soup.find_all("a", href=True):
-                link_text = a.get_text().lower()
-                if any(kw in link_text for kw in ["купить", "билет", "ticket", "buy"]):
-                    href = a["href"]
-                    if href.startswith("http"):
-                        ticket_link = href
-                    else:
-                        ticket_link = f"https://superfinal.rfs.ru{href}"
-                    break
+        if not ticket_link:
+            log.debug("RFS superfinal: page live but no purchase link found")
+            return None
 
-            return {
-                "source": "RFS Superfinal",
-                "url": ticket_link or RFS_SUPERFINAL_URL,
-                "price": price,
-                "status": "tickets_found" if has_tickets else "page_live",
-            }
+        price_match = re.search(r'от\s+(\d[\d\s]*)\s*[₽р]', text)
+        price = price_match.group(0) if price_match else None
 
-        return None
+        return {
+            "source": "RFS Superfinal",
+            "url": ticket_link,
+            "price": price,
+            "status": "tickets_found",
+        }
     except Exception as e:
         log.warning(f"RFS superfinal check failed: {e}")
         return None
@@ -246,6 +302,12 @@ def check_spartak_tickets(send_telegram: bool = True) -> str:
     Returns status string. Sends Telegram alert only when tickets are found.
     Silent (returns 'not_found') when no tickets available.
     """
+    # Auto-disable: Cup Final is May 24, 2026; no point checking after that.
+    if date.today() > date(2026, 5, 24):
+        log.info("spartak_tickets: Cup Final date has passed, disabling cron")
+        _disable_cron("spartak-tickets")
+        return "expired"
+
     results = []
 
     # Check all sources
@@ -275,14 +337,16 @@ def check_spartak_tickets(send_telegram: bool = True) -> str:
     msg_parts.append("\n⚡ Покупай через официальный сайт — Кассир не перепродаёт.")
     message = "\n".join(msg_parts)
 
+    found_status = f"found: {[r['source'] for r in results]}"
+
     if send_telegram:
         try:
             _send_telegram(message)
-            log.info("spartak_tickets: tickets found, notification sent")
+            log.info("spartak_tickets: tickets found, Telegram notification sent")
         except Exception as e:
-            log.error(f"spartak_tickets: failed to send Telegram: {e}")
+            log.error(f"spartak_tickets: Telegram send failed (tickets still found): {e}")
 
-    return f"found: {[r['source'] for r in results]}"
+    return found_status
 
 
 def _send_telegram(message: str) -> None:
