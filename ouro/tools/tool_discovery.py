@@ -48,12 +48,16 @@ def _enable_tools(ctx: ToolContext, tools: str = "", **kwargs) -> str:
     for name in names:
         schema = _registry.get_schema_by_name(name)
         if schema:
-            found.append(f"{name}: {schema['function'].get('description', '')[:100]}")
+            found.append(name)
         else:
             not_found.append(name)
     parts = []
     if found:
-        parts.append("✅ Tools are registered and callable:\n" + "\n".join(f"  - {s}" for s in found))
+        parts.append(
+            "⚠️ enable_tools is only effective inside a running task loop — "
+            "no schemas were added to your active set. "
+            f"(Tools exist but were NOT enabled: {', '.join(found)})"
+        )
     if not_found:
         parts.append(f"❌ Not found: {', '.join(not_found)}")
     return "\n".join(parts)
