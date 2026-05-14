@@ -51,7 +51,7 @@ EVENT_KEYWORDS_EN = ["spartak", "krasnodar", "cup final", "may 24"]
 
 # Known ticket vendor domains — presence in an href means a real purchase link
 KNOWN_TICKET_VENDORS = re.compile(
-    r"kassir\.ru|ticketland\.ru|tickets\.ru|concert\.ru|fonbet|kassa\.rambler|sport\.rfs\.ru/ticket",
+    r"ticketland\.ru|tickets\.ru|concert\.ru|fonbet|kassa\.rambler|sport\.rfs\.ru/ticket",
     re.IGNORECASE,
 )
 
@@ -335,7 +335,8 @@ def get_tools():
                 "name": "check_spartak_tickets",
                 "description": (
                     "Check if tickets for Spartak vs Krasnodar Cup Final (May 24, Luzhniki) "
-                    "are available on RFS and Kassir.ru. Returns 'not_found' if no tickets, "
+                    "are available. Monitors superfinal.rfs.ru, m.rfs.ru, and afisha.yandex.ru. "
+                    "Returns 'not_found' if no tickets, "
                     "or lists sources if found. Automatically sends Telegram notification when found."
                 ),
                 "parameters": {
