@@ -1,8 +1,8 @@
 """Spartak Cup Final tickets monitor.
 
-Monitors two sites for Spartak vs Krasnodar Cup Final tickets (May 24, Luzhniki):
+Monitors sites for Spartak vs Krasnodar Cup Final tickets (May 24, Luzhniki):
 - https://superfinal.rfs.ru/ (RFS official superfinal page)
-- https://msk.kassir.ru/ (Kassir.ru search)
+- https://afisha.yandex.ru/ (Yandex Afisha sport events)
 
 Logic: look for REAL ticket sale links, not just keyword mentions in SEO text.
 Silent when no tickets found; sends Telegram alert immediately when found.
@@ -31,10 +31,6 @@ HEADERS = {
 RFS_SUPERFINAL_URL = "https://superfinal.rfs.ru/"
 # Also check RFS news for ticket sale announcement
 RFS_MAIN_URL = "https://m.rfs.ru/"
-# Kassir search for Spartak final
-KASSIR_SEARCH_URL = "https://msk.kassir.ru/search?query=%D1%81%D0%BF%D0%B0%D1%80%D1%82%D0%B0%D0%BA+%D0%BA%D1%83%D0%B1%D0%BE%D0%BA+%D1%84%D0%B8%D0%BD%D0%B0%D0%BB"
-# Also try the sports section
-KASSIR_SPORTS_URL = "https://msk.kassir.ru/bilety-na-sportivnye-meropriyatiya"
 # Yandex Afisha sport search for Spartak
 YANDEX_AFISHA_URL = "https://afisha.yandex.ru/moscow/sport?text=%D1%81%D0%BF%D0%B0%D1%80%D1%82%D0%B0%D0%BA"
 
@@ -200,98 +196,6 @@ def _check_rfs_news() -> Optional[dict]:
         return None
 
 
-def _check_kassir_search() -> Optional[dict]:
-    """Check Kassir.ru search for Spartak Cup Final listing."""
-    try:
-        resp = requests.get(KASSIR_SEARCH_URL, headers=HEADERS, timeout=15)
-        if resp.status_code != 200:
-            return None
-
-        text_lower = resp.text.lower()
-
-        # On search results page, event cards appear in structured format
-        # Check for actual event listing (not SEO text)
-        soup = BeautifulSoup(resp.text, "html.parser")
-
-        # Look for event cards/items that match our criteria
-        for card in soup.find_all(["div", "article", "li"],
-                                    class_=re.compile(r"event|card|item|result|concert")):
-            card_text = card.get_text().lower()
-            if (_has_event_keywords(card_text) and
-                any(kw in card_text for kw in TICKET_SALE_KEYWORDS)):
-                # Extract price
-                price_match = re.search(r'от\s+(\d[\d\s]*)\s*[₽р]', card.get_text())
-                price = price_match.group(0) if price_match else None
-
-                # Get link
-                link = card.find("a", href=True)
-                if link:
-                    href = link["href"]
-                    url = href if href.startswith("http") else f"https://msk.kassir.ru{href}"
-                    return {
-                        "source": "Кассир.ру",
-                        "url": url,
-                        "price": price,
-                        "status": "tickets_found",
-                    }
-
-        # Fallback: check if search returned any results with event keywords
-        # (page has actual event listings, not just "no results" + SEO text)
-        has_results = soup.find(class_=re.compile(r"search.*result|event.*list|results"))
-        if has_results:
-            result_text = has_results.get_text().lower()
-            if _has_event_keywords(result_text) and any(kw in result_text for kw in TICKET_SALE_KEYWORDS):
-                return {
-                    "source": "Кассир.ру",
-                    "url": KASSIR_SEARCH_URL,
-                    "price": None,
-                    "status": "tickets_found",
-                }
-
-        return None
-    except Exception as e:
-        log.warning(f"Kassir search check failed: {e}")
-        return None
-
-
-def _check_kassir_sports() -> Optional[dict]:
-    """Check Kassir.ru sports section for Spartak event card."""
-    try:
-        resp = requests.get(KASSIR_SPORTS_URL, headers=HEADERS, timeout=15)
-        if resp.status_code != 200:
-            return None
-
-        soup = BeautifulSoup(resp.text, "html.parser")
-
-        # Sports listings are in structured event cards
-        for card in soup.find_all(["div", "article", "li", "a"],
-                                    class_=re.compile(r"event|card|item|tile|poster|show")):
-            card_text = card.get_text().lower()
-            # Must have Spartak + (final OR cup) - strict check to avoid SEO text
-            has_spartak = "спартак" in card_text
-            has_final_context = any(kw in card_text for kw in ["финал кубка", "суперфинал", "кубок", "24 мая"])
-
-            if has_spartak and has_final_context:
-                price_match = re.search(r'от\s+(\d[\d\s]*)\s*[₽р]', card.get_text())
-                price = price_match.group(0) if price_match else None
-
-                link = card if card.name == "a" else card.find("a", href=True)
-                if link and link.get("href"):
-                    href = link["href"]
-                    url = href if href.startswith("http") else f"https://msk.kassir.ru{href}"
-                    return {
-                        "source": "Кассир.ру (афиша)",
-                        "url": url,
-                        "price": price,
-                        "status": "tickets_found",
-                    }
-
-        return None
-    except Exception as e:
-        log.warning(f"Kassir sports check failed: {e}")
-        return None
-
-
 def _check_yandex_afisha() -> Optional[dict]:
     """Check Yandex Afisha for Spartak Cup Final ticket listings.
 
@@ -350,7 +254,6 @@ def check_spartak_tickets(send_telegram: bool = True) -> str:
     Monitors:
     - superfinal.rfs.ru — official RFS superfinal page
     - m.rfs.ru — RFS news for ticket announcement
-    - msk.kassir.ru — Kassir.ru search and sports section
     - afisha.yandex.ru — Yandex Afisha sport events
 
     Returns status string. Sends Telegram alert only when tickets are found.
@@ -367,11 +270,9 @@ def check_spartak_tickets(send_telegram: bool = True) -> str:
     # Check all sources
     rfs_superfinal = _check_rfs_superfinal()
     rfs_news = _check_rfs_news()
-    kassir_search = _check_kassir_search()
-    kassir_sports = _check_kassir_sports()
     yandex_afisha = _check_yandex_afisha()
 
-    for result in [rfs_superfinal, rfs_news, kassir_search, kassir_sports, yandex_afisha]:
+    for result in [rfs_superfinal, rfs_news, yandex_afisha]:
         if result and result.get("status") == "tickets_found":
             results.append(result)
 
