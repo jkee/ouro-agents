@@ -118,6 +118,7 @@ EXPECTED_TOOLS = [
     "check_ski_queue",
     "check_spartak_tickets",
     "check_spartak_matches",
+    "parse_email_dates",
     "days_tracker_status", "days_tracker_add_stay",
     "get_task_costs",
     # Message routing
