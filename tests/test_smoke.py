@@ -132,6 +132,7 @@ EXPECTED_TOOLS = [
     "composio_list_connections", "composio_get_oauth_url", "composio_run_action", "composio_request_app",
     # Cron/scheduler
     "cron_list", "cron_add", "cron_remove", "cron_toggle",
+    "run_data_cleanup",
 ]
 
 
