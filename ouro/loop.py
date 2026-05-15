@@ -613,8 +613,13 @@ def run_llm_loop(
     Returns: (final_text, accumulated_usage, llm_trace)
     """
     # LLM-first: single default model, LLM switches via tool if needed
-    active_model = llm.default_model()
-    active_effort = initial_effort
+    # For cron tasks, use light model to reduce costs (~10-20x cheaper)
+    if task_type == "cron":
+        active_model = llm.light_model()
+        active_effort = "low"
+    else:
+        active_model = llm.default_model()
+        active_effort = initial_effort
 
     llm_trace: Dict[str, Any] = {"assistant_notes": [], "tool_calls": []}
     accumulated_usage: Dict[str, Any] = {}

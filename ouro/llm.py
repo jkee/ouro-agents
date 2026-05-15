@@ -416,6 +416,11 @@ class LLMClient:
         """Return the single default model from env. LLM switches via tool if needed."""
         return os.environ.get("OURO_MODEL", "anthropic/claude-sonnet-4.6")
 
+    def light_model(self) -> str:
+        """Return the light/cheap model (for cron tasks, consciousness, etc.)."""
+        env = os.environ.get("OURO_MODEL_LIGHT", "")
+        return env if env else DEFAULT_LIGHT_MODEL
+
     def available_models(self) -> List[str]:
         """Return list of available models from env (for switch_model tool schema)."""
         main = os.environ.get("OURO_MODEL", "anthropic/claude-sonnet-4.6")
