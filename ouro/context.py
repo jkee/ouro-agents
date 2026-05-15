@@ -248,16 +248,28 @@ def _build_health_invariants(env: Any) -> str:
     except Exception:
         pass
 
-    # 4. Stale identity.md
+    # 4. Identity.md and USER_CONTEXT.md existence + staleness
+    # NOTE: These files live on the DATA VOLUME (/data/memory/), NOT in the git repository.
+    # This is intentional — they contain live runtime state. "Missing from repository" is normal.
     try:
         import time as _time
         identity_path = env.drive_path("memory/identity.md")
-        if identity_path.exists():
+        user_ctx_path = env.drive_path("memory/USER_CONTEXT.md")
+        identity_exists = identity_path.exists()
+        user_ctx_exists = user_ctx_path.exists()
+        if not identity_exists:
+            checks.append("CRITICAL: MISSING FILE — identity.md not found on data volume (/data/memory/identity.md)")
+        elif not user_ctx_exists:
+            checks.append("CRITICAL: MISSING FILE — USER_CONTEXT.md not found on data volume (/data/memory/USER_CONTEXT.md)")
+        else:
             age_hours = (_time.time() - identity_path.stat().st_mtime) / 3600
             if age_hours > 8:
-                checks.append(f"WARNING: STALE IDENTITY — identity.md last updated {age_hours:.0f}h ago")
+                checks.append(
+                    f"WARNING: STALE IDENTITY — identity.md exists on data volume "
+                    f"but was last updated {age_hours:.0f}h ago (consider updating content, not recreating)"
+                )
             else:
-                checks.append("OK: identity.md recent")
+                checks.append("OK: identity.md and USER_CONTEXT.md present on data volume, recent")
     except Exception:
         pass
 
