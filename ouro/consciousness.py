@@ -64,6 +64,7 @@ class BackgroundConsciousness:
         self._next_wakeup_sec: float = 3600.0
         self._observations: queue.Queue = queue.Queue()
         self._deferred_events: list = []
+        self._last_memory_missing_alert_ts: float = 0.0
 
         # Budget tracking
         self._bg_spent_usd: float = 0.0
@@ -313,23 +314,47 @@ class BackgroundConsciousness:
             bible = read_text(bible_path)
             parts.append("## BIBLE.md\n\n" + clip_text(bible, 6000))
 
-        # Identity
-        identity_path = self._drive_root / "memory" / "identity.md"
-        if identity_path.exists():
-            parts.append("## Identity\n\n" + clip_text(
-                read_text(identity_path), 6000))
+        # Memory files — always show status, include content if available
+        memory_dir = self._drive_root / "memory"
+        memory_files = {
+            "identity.md": ("Identity", 6000),
+            "scratchpad.md": ("Scratchpad", 8000),
+            "USER_CONTEXT.md": ("User Context", 2000),
+        }
+        memory_status_lines = []
+        for filename, (section_name, max_chars) in memory_files.items():
+            fpath = memory_dir / filename
+            # Retry once on transient FS errors
+            for attempt in range(2):
+                try:
+                    exists = fpath.exists()
+                    break
+                except OSError:
+                    import time as _time
+                    _time.sleep(0.2)
+                    exists = False
+            if exists:
+                memory_status_lines.append(f"- {filename}: ✅ present")
+                try:
+                    parts.append(f"## {section_name}\n\n" + clip_text(
+                        read_text(fpath), max_chars))
+                except OSError:
+                    memory_status_lines[-1] = f"- {filename}: ⚠️ read error (transient)"
+            else:
+                memory_status_lines.append(f"- {filename}: ❌ missing")
 
-        # Scratchpad
-        scratchpad_path = self._drive_root / "memory" / "scratchpad.md"
-        if scratchpad_path.exists():
-            parts.append("## Scratchpad\n\n" + clip_text(
-                read_text(scratchpad_path), 8000))
+        # Add memory status block for LLM awareness
+        dir_exists = False
+        for attempt in range(2):
+            try:
+                dir_exists = memory_dir.exists()
+                break
+            except OSError:
+                import time as _time
+                _time.sleep(0.2)
 
-        # User context
-        user_context_path = self._drive_root / "memory" / "USER_CONTEXT.md"
-        if user_context_path.exists():
-            parts.append("## User Context\n\n" + clip_text(
-                read_text(user_context_path), 2000))
+        dir_status = "✅ present" if dir_exists else "❌ MISSING"
+        parts.insert(1, f"## Memory Directory Status\n\n/data/memory dir: {dir_status}\n" + "\n".join(memory_status_lines) + "\n\n**If any file shows ❌ missing — this is likely a transient mount issue. Do NOT send CRITICAL alerts. Files will recover on next wakeup. Only alert if missing persists for >3 consecutive wakeups.**")
 
         # Dialogue summary for continuity
         summary_path = self._drive_root / "memory" / "dialogue_summary.md"
