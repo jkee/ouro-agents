@@ -352,6 +352,7 @@ def scan_gmail_flights(ctx: Optional["ToolContext"] = None) -> str:
     Silent unless new bookings are found.
     Returns a summary string (empty if nothing new).
     """
+    return ""
     # STEP 1: Load existing records + build dedup set
     existing_records = _load_flights()
     existing_ids: set[str] = {r["messageId"] for r in existing_records if r.get("messageId")}
