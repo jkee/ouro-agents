@@ -222,6 +222,12 @@ Full text: [BIBLE.md](BIBLE.md)
 
 ## Changelog
 
+### v1.1.1 — 2026-05-16
+- Sync VERSION to match identity.md
+- Cron model optimization: all cron tasks switched to gemini-flash for budget savings
+- Gmail flight scanner fix: resolved silent failure from dead return statement
+- Email date parser: deterministic regex parser with 47 tests
+
 ### v1.1.0 — 2026-04-13
 - Email scanner: hourly Gmail scan for booking confirmations, dedup, silent mode (`/data/flights.json`)
 - Google Calendar OAuth integration: read/write user calendar events
