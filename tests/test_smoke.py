@@ -134,6 +134,7 @@ EXPECTED_TOOLS = [
     # Cron/scheduler
     "cron_list", "cron_add", "cron_remove", "cron_toggle",
     "run_data_cleanup",
+    "scan_gmail_flights",
 ]
 
 

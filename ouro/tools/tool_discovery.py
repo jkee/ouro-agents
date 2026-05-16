@@ -28,7 +28,7 @@ def _list_available_tools(ctx: ToolContext, **kwargs) -> str:
         return "Tool discovery not available in this context."
     non_core = _registry.list_non_core_tools()
     # Exclude the meta-tools themselves from the listing
-    non_core = [t for t in non_core if t["name"] not in ("list_available_tools", "enable_tools")]
+    non_core = [t for t in non_core if t["name"] not in ("list_available_tools", "enable_tools", "scan_gmail_flights")]
     if not non_core:
         return "All tools are already in your active set."
     lines = [f"**{len(non_core)} additional tools available** (use `enable_tools` to activate):\n"]
