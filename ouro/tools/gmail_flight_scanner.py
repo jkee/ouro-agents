@@ -265,6 +265,7 @@ def _parse_email(email: dict) -> dict:
     arrival = date_result.get("arrival")
     checkin = date_result.get("checkin")
     checkout = date_result.get("checkout")
+    parse_warnings: list[str] = date_result.get("warnings") or []
 
     booking_type = _classify_type(email, body)
     passengers = _extract_passengers(body)
@@ -272,11 +273,25 @@ def _parse_email(email: dict) -> dict:
     route = _extract_route_or_location(email, body, booking_type)
     name = _extract_airline_or_hotel(email, body, booking_type)
 
+    # Date parse validation
+    if booking_type in ("flight", "train"):
+        date_parse_ok = departure is not None
+        if not date_parse_ok:
+            parse_warnings.append("departure date not found")
+    elif booking_type == "hotel":
+        date_parse_ok = checkin is not None
+        if not date_parse_ok:
+            parse_warnings.append("checkin date not found")
+    else:
+        date_parse_ok = True
+
     record: dict[str, Any] = {
         "messageId": message_id,
         "type": booking_type,
         "scanned_at": datetime.now(timezone.utc).isoformat(),
         "subject": subject,
+        "parse_warnings": parse_warnings,
+        "date_parse_ok": date_parse_ok,
     }
 
     if booking_type == "flight":
@@ -339,7 +354,35 @@ def _format_notification(record: dict) -> str:
     lines = [f"{icon} *New {t.title()} Booking Found*"]
     lines.append(f"Subject: {record.get('subject', '')[:80]}")
     lines.append(_format_record(record))
+    parse_warnings = record.get("parse_warnings") or []
+    if parse_warnings:
+        lines.append(f"⚠️ Warnings: {'; '.join(parse_warnings)}")
     return "\n".join(lines)
+
+
+def _check_date_parse_failures(new_records: list[dict]) -> None:
+    """Send a single Telegram alert if any new records failed date parsing."""
+    failed = [r for r in new_records if not r.get("date_parse_ok", True)]
+    if not failed:
+        return
+
+    missing_field_map = {"flight": "departure", "train": "departure", "hotel": "checkin", "other": "departure/arrival"}
+
+    alert_lines = [f"⚠️ *Date Parsing Failed* for {len(failed)} booking(s)\n"]
+    for r in failed:
+        t = r.get("type", "other")
+        subject = r.get("subject", "")[:60]
+        missing = missing_field_map.get(t, "departure/arrival")
+        warnings = r.get("parse_warnings") or []
+        warnings_str = "; ".join(warnings) if warnings else "none"
+        alert_lines.append(f"• [{t}] {subject} — no {missing} date found")
+        alert_lines.append(f"  Warnings: {warnings_str}")
+        log.warning(
+            "gmail_flight_scanner: date parse failure for [%s] subject=%r warnings=%r",
+            t, r.get("subject", ""), warnings,
+        )
+
+    _send_telegram("\n".join(alert_lines))
 
 
 # ---------------------------------------------------------------------------
@@ -379,6 +422,9 @@ def scan_gmail_flights(ctx: Optional["ToolContext"] = None) -> str:
     all_records = existing_records + new_records
     _save_flights(all_records)
     _save_markdown(all_records)
+
+    # Alert on any date parse failures
+    _check_date_parse_failures(new_records)
 
     # STEP 6: Notify only for new bookings
     for record in new_records:

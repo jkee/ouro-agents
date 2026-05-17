@@ -8,6 +8,7 @@ from ouro.tools.email_parser import (
     _parse_all_dates,
     _parse_email_dates,
 )
+from ouro.tools.gmail_flight_scanner import _parse_email
 
 
 # ---------------------------------------------------------------------------
@@ -299,3 +300,61 @@ class TestMarriottRangeLine:
         assert r["checkin"] == "2026-05-28"
         assert r["checkout"] == "2026-05-31"
         assert not any("inferred" in w.lower() for w in r["warnings"])
+
+
+# ---------------------------------------------------------------------------
+# _parse_email — date parse validation
+# ---------------------------------------------------------------------------
+
+class TestGmailFlightScannerDateValidation:
+    """Tests for date parse validation added to gmail_flight_scanner._parse_email."""
+
+    def test_flight_with_departure_date_parse_ok(self):
+        email = {"subject": "Flight confirmation", "body": "Departure: 2026-06-01", "messageId": "test-id-123"}
+        record = _parse_email(email)
+        assert record["date_parse_ok"] is True
+        assert "departure date not found" not in record["parse_warnings"]
+
+    def test_flight_missing_departure_date_parse_fail(self):
+        email = {"subject": "Flight confirmation", "body": "Your booking is confirmed.", "messageId": "test-id-123"}
+        record = _parse_email(email)
+        assert record["date_parse_ok"] is False
+        assert "departure date not found" in record["parse_warnings"]
+
+    def test_hotel_with_checkin_date_parse_ok(self):
+        email = {
+            "subject": "Hotel reservation",
+            "body": "Check-In: May 28, 2026\nCheck-Out: May 31, 2026",
+            "messageId": "test-id-123",
+        }
+        record = _parse_email(email)
+        assert record["date_parse_ok"] is True
+
+    def test_hotel_missing_checkin_date_parse_fail(self):
+        email = {
+            "subject": "Hotel reservation",
+            "body": "Your hotel booking is confirmed.",
+            "messageId": "test-id-123",
+        }
+        record = _parse_email(email)
+        assert record["date_parse_ok"] is False
+        assert "checkin date not found" in record["parse_warnings"]
+
+    def test_other_type_always_date_parse_ok(self):
+        email = {
+            "subject": "Order confirmation",
+            "body": "Your order has been placed.",
+            "messageId": "test-id-123",
+        }
+        record = _parse_email(email)
+        assert record["date_parse_ok"] is True
+
+    def test_parse_warnings_include_parser_warnings(self):
+        email = {
+            "subject": "Hotel reservation",
+            "body": "Check-In: May 28, 2026\nCheck-In: May 29, 2026",
+            "messageId": "test-id-123",
+        }
+        record = _parse_email(email)
+        assert len(record["parse_warnings"]) > 0
+        assert any("multiple" in w.lower() for w in record["parse_warnings"])
