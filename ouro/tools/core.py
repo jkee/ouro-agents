@@ -11,7 +11,7 @@ import uuid
 from typing import Any, Dict, List, Tuple
 
 from ouro.tools.registry import ToolContext, ToolEntry
-from ouro.utils import read_text, safe_relpath, utc_now_iso
+from ouro.utils import read_text, write_text, safe_relpath, utc_now_iso
 
 log = logging.getLogger(__name__)
 
@@ -55,7 +55,7 @@ def _drive_write(ctx: ToolContext, path: str, content: str, mode: str = "overwri
     p = ctx.drive_path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
     if mode == "overwrite":
-        p.write_text(content, encoding="utf-8")
+        write_text(p, content)
     else:
         with p.open("a", encoding="utf-8") as f:
             f.write(content)
@@ -302,8 +302,7 @@ Now write a comprehensive summary:"""
 
         # Write to memory/dialogue_summary.md
         summary_path = ctx.drive_root / "memory" / "dialogue_summary.md"
-        summary_path.parent.mkdir(parents=True, exist_ok=True)
-        summary_path.write_text(summary, encoding="utf-8")
+        write_text(summary_path, summary)
 
         cost = float(usage.get("cost", 0))
         return f"OK: Summarized {len(entries)} messages. Written to memory/dialogue_summary.md. Cost: ${cost:.4f}\n\n{summary[:500]}..."

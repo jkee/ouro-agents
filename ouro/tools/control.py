@@ -186,9 +186,9 @@ def _send_owner_message(ctx: ToolContext, text: str, reason: str = "") -> str:
 
 def _update_identity(ctx: ToolContext, content: str) -> str:
     """Update identity manifest (who you are, who you want to become)."""
+    from ouro.utils import write_text
     path = ctx.drive_root / "memory" / "identity.md"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content, encoding="utf-8")
+    write_text(path, content)
     return f"OK: identity updated ({len(content)} chars)"
 
 

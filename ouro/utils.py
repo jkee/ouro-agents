@@ -41,12 +41,33 @@ def sha256_text(s: str) -> str:
 # ---------------------------------------------------------------------------
 
 def read_text(path: pathlib.Path) -> str:
-    return path.read_text(encoding="utf-8")
+    """Read text from path, with one retry on transient OSError."""
+    try:
+        return path.read_text(encoding="utf-8")
+    except OSError:
+        time.sleep(0.05)
+        return path.read_text(encoding="utf-8")
 
 
 def write_text(path: pathlib.Path, content: str) -> None:
+    """Write text to path atomically (write to .tmp then rename) to prevent torn reads."""
+    import tempfile
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content, encoding="utf-8")
+    # Write to a temp file in the same directory, then atomically rename.
+    # os.replace() is atomic on Linux (POSIX rename semantics).
+    fd, tmp_path = tempfile.mkstemp(dir=path.parent, prefix=path.name + ".tmp.", suffix=".swp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(content)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, path)
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
 
 
 def append_jsonl(path: pathlib.Path, obj: Dict[str, Any]) -> None:
