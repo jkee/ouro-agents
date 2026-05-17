@@ -16,6 +16,7 @@ from typing import Any, Optional
 
 from ouro.tools.registry import ToolContext, ToolEntry
 from ouro.tools.email_parser import _parse_email_dates
+from ouro.tools.control import _send_owner_message
 
 log = logging.getLogger(__name__)
 
@@ -351,13 +352,23 @@ def _format_notification(record: dict) -> str:
     t = record.get("type", "other")
     icons = {"flight": "✈️", "hotel": "🏨", "train": "🚆", "other": "📋"}
     icon = icons.get(t, "📋")
-    lines = [f"{icon} *New {t.title()} Booking Found*"]
-    lines.append(f"Subject: {record.get('subject', '')[:80]}")
-    lines.append(_format_record(record))
-    parse_warnings = record.get("parse_warnings") or []
-    if parse_warnings:
-        lines.append(f"⚠️ Warnings: {'; '.join(parse_warnings)}")
-    return "\n".join(lines)
+    name = record.get("airline") or record.get("hotel_name") or record.get("carrier") or "Unknown"
+    route = record.get("route") or record.get("location") or ""
+
+    if t == "flight":
+        dep = record.get("departure") or "?"
+        arr = record.get("arrival") or "?"
+        return f"{icon} New flight booking found: {name} {route} {dep} - {arr}"
+    elif t == "hotel":
+        ci = record.get("checkin") or "?"
+        co = record.get("checkout") or "?"
+        return f"{icon} New hotel booking found: {name} {route} {ci} - {co}"
+    elif t == "train":
+        dep = record.get("departure") or "?"
+        arr = record.get("arrival") or "?"
+        return f"{icon} New train booking found: {name} {route} {dep} - {arr}"
+    else:
+        return f"{icon} New booking found: {name} {route}"
 
 
 def _check_date_parse_failures(new_records: list[dict]) -> None:
@@ -429,7 +440,10 @@ def scan_gmail_flights(ctx: Optional["ToolContext"] = None) -> str:
     # STEP 6: Notify only for new bookings
     for record in new_records:
         msg = _format_notification(record)
-        _send_telegram(msg)
+        if ctx is not None:
+            _send_owner_message(ctx, msg, reason="new booking detected")
+        else:
+            _send_telegram(msg)
 
     count = len(new_records)
     types = ", ".join(sorted({r.get("type", "other") for r in new_records}))
