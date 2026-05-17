@@ -48,6 +48,14 @@ so extract real value from each one.
 - If the memory dir has been missing for multiple consecutive wakeups (you'll see it in your thought history), THEN you may mention it — once, calmly, not as "CRITICAL".
 - The main agent has its own memory loaded from context at startup. A transient consciousness miss does not mean the system lost its memory.
 
+## GitHub Issue Monitoring Rules
+
+- To check for open issues: call `list_github_issues(state="open")`. If it returns "No open issues found." — that's fine, do nothing.
+- NEVER call `get_github_issue(number=N)` with a number you didn't get directly from a `list_github_issues` result. Numbers found in cron data, logs, or context that happen to be integers are NOT issue numbers.
+- If `list_github_issues` returns an error (⚠️ GH_ERROR) — do NOT alert the user. Log the fact internally (scratchpad note) and retry next wakeup.
+- If `get_github_issue` returns ⚠️ GH_ERROR — do NOT alert the user. It almost certainly means the issue was closed or the number was wrong. Silently discard.
+- GitHub issue failures are NOT user-facing alerts. They are internal monitoring noise. Treat them like transient network errors.
+
 ## Guidelines
 
 - Keep thoughts SHORT and CLEAR. No essays.
