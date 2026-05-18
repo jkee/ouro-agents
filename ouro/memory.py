@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import pathlib
+import time
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
@@ -48,10 +49,23 @@ class Memory:
 
     # --- Load / save ---
 
+    def _read_with_retry(self, p: pathlib.Path, max_attempts: int = 3, delay: float = 1.0) -> str:
+        """Read a file with retry logic to handle transient drive access issues."""
+        last_exc: Exception | None = None
+        for attempt in range(1, max_attempts + 1):
+            try:
+                return read_text(p)
+            except Exception as exc:
+                last_exc = exc
+                log.warning("Attempt %d/%d failed reading %s: %s", attempt, max_attempts, p, exc)
+                if attempt < max_attempts:
+                    time.sleep(delay)
+        raise last_exc  # type: ignore[misc]
+
     def load_scratchpad(self) -> str:
         p = self.scratchpad_path()
         if p.exists():
-            return read_text(p)
+            return self._read_with_retry(p)
         default = self._default_scratchpad()
         write_text(p, default)
         return default
@@ -62,7 +76,7 @@ class Memory:
     def load_identity(self) -> str:
         p = self.identity_path()
         if p.exists():
-            return read_text(p)
+            return self._read_with_retry(p)
         default = self._default_identity()
         write_text(p, default)
         return default
@@ -70,7 +84,7 @@ class Memory:
     def load_user_context(self) -> str:
         p = self.user_context_path()
         if p.exists():
-            return read_text(p)
+            return self._read_with_retry(p)
         default = self._default_user_context()
         write_text(p, default)
         return default
