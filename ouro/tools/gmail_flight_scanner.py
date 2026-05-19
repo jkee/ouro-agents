@@ -26,7 +26,8 @@ FLIGHTS_MD = DATA_DIR / "flights.md"
 
 GMAIL_QUERY = (
     "(flight OR билет OR booking OR eticket OR itinerary OR посадочный OR boarding "
-    "OR hotel OR гостиница OR reservation OR check-in OR confirmed) newer_than:24h"
+    "OR hotel OR гостиница OR reservation OR check-in OR confirmed OR trip.com "
+    "OR tripcom OR 'booking confirmed') newer_than:7d"
 )
 
 
@@ -243,10 +244,16 @@ def _extract_route_or_location(email: dict, body: str, booking_type: str) -> str
         return m.group(1).strip() if m else ""
 
     # Flight/train: look for IATA codes or city pairs
+    # Collect all pairs to support multi-segment (Trip.com) itineraries
     iata_re = re.compile(r"\b([A-Z]{3})\s*[-→–]\s*([A-Z]{3})\b")
-    m = iata_re.search(subject) or iata_re.search(body[:500])
-    if m:
-        return f"{m.group(1)} → {m.group(2)}"
+    all_pairs = iata_re.findall(subject + " " + body[:1000])
+    if all_pairs:
+        # Build a chain: A→B, B→C becomes A→B→C (deduplicating the join point)
+        segments: list[str] = [all_pairs[0][0]]
+        for _, dst in all_pairs:
+            if dst != segments[-1]:
+                segments.append(dst)
+        return " → ".join(segments)
 
     # City names separated by arrow or dash in subject
     route_re = re.compile(r"([A-ZА-ЯЁ][a-zа-яё]{2,})\s*[-→–—]\s*([A-ZА-ЯЁ][a-zа-яё]{2,})")
