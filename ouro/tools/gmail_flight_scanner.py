@@ -180,7 +180,7 @@ def _fetch_emails_via_composio() -> list[dict]:
 
 def _get_body(email: dict) -> str:
     """Extract best available body text from an email dict."""
-    for key in ("body", "html_body", "text_body", "snippet", "htmlBody", "textBody", "plain"):
+    for key in ("body", "html_body", "text_body", "messageText", "snippet", "htmlBody", "textBody", "plain"):
         val = email.get(key)
         if val and isinstance(val, str) and len(val) > 20:
             return val
@@ -299,6 +299,17 @@ def _parse_email(email: dict) -> dict:
     checkin = date_result.get("checkin")
     checkout = date_result.get("checkout")
     parse_warnings: list[str] = date_result.get("warnings") or []
+
+    # Fallback: if no labeled departure date found, infer from raw_dates (first future date)
+    # This handles senders like Trip.com that don't use "Departure:" labels
+    if not departure or not checkin:
+        today = datetime.now(timezone.utc).date().isoformat()
+        raw_dates = [d for d in (date_result.get("raw_dates") or []) if d >= today]
+        if not departure and raw_dates:
+            departure = raw_dates[0]
+            parse_warnings.append("departure date inferred from raw_dates (no label found)")
+        if not checkin and raw_dates:
+            checkin = raw_dates[0]
 
     booking_type = _classify_type(email, body)
     passengers = _extract_passengers(body)
