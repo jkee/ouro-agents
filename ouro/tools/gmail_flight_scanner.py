@@ -26,7 +26,7 @@ FLIGHTS_MD = DATA_DIR / "flights.md"
 
 GMAIL_QUERY = (
     "(flight OR билет OR booking OR eticket OR itinerary OR посадочный OR boarding "
-    "OR hotel OR гостиница OR reservation OR check-in) newer_than:3h"
+    "OR hotel OR гостиница OR reservation OR check-in OR confirmed) newer_than:24h"
 )
 
 
@@ -131,7 +131,7 @@ def _fetch_emails_via_composio() -> list[dict]:
             try:
                 result = toolset.execute_action(
                     action=Action("GMAIL_FETCH_EMAILS"),
-                    params={"query": GMAIL_QUERY, "max_results": 20},
+                    params={"query": GMAIL_QUERY, "max_results": 50},
                     entity_id="default",
                 )
                 break
