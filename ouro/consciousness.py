@@ -324,34 +324,44 @@ class BackgroundConsciousness:
         memory_status_lines = []
         for filename, (section_name, max_chars) in memory_files.items():
             fpath = memory_dir / filename
-            # Retry once on transient FS errors
-            for attempt in range(2):
+            # Use try-read instead of .exists() — avoids transient mount false negatives
+            file_content: str | None = None
+            for attempt in range(3):
                 try:
-                    exists = fpath.exists()
+                    file_content = read_text(fpath)
                     break
+                except FileNotFoundError:
+                    import time as _time
+                    if attempt < 2:
+                        _time.sleep(0.3)
+                    # file_content stays None after all retries
                 except OSError:
                     import time as _time
                     _time.sleep(0.2)
-                    exists = False
-            if exists:
+                    # transient error — retry
+            if file_content is not None:
                 memory_status_lines.append(f"- {filename}: ✅ present")
-                try:
-                    parts.append(f"## {section_name}\n\n" + clip_text(
-                        read_text(fpath), max_chars))
-                except OSError:
-                    memory_status_lines[-1] = f"- {filename}: ⚠️ read error (transient)"
+                parts.append(f"## {section_name}\n\n" + clip_text(file_content, max_chars))
             else:
                 memory_status_lines.append(f"- {filename}: ❌ missing")
 
         # Add memory status block for LLM awareness
+        # Check dir existence via listing rather than .exists() to avoid transient false negatives
         dir_exists = False
-        for attempt in range(2):
+        for attempt in range(3):
             try:
-                dir_exists = memory_dir.exists()
+                list(memory_dir.iterdir())
+                dir_exists = True
                 break
+            except FileNotFoundError:
+                import time as _time
+                if attempt < 2:
+                    _time.sleep(0.3)
             except OSError:
                 import time as _time
                 _time.sleep(0.2)
+                dir_exists = True  # exists but temporarily unlistable
+                break
 
         dir_status = "✅ present" if dir_exists else "❌ MISSING"
         parts.insert(1, f"## Memory Directory Status\n\n/data/memory dir: {dir_status}\n" + "\n".join(memory_status_lines) + "\n\n**If any file shows ❌ missing — this is likely a transient mount issue. Do NOT send CRITICAL alerts. Files will recover on next wakeup. Only alert if missing persists for >3 consecutive wakeups.**")

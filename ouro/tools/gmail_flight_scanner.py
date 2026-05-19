@@ -36,11 +36,11 @@ GMAIL_QUERY = (
 # ---------------------------------------------------------------------------
 
 def _load_flights() -> list[dict]:
-    if not FLIGHTS_JSON.exists():
-        return []
     try:
         data = json.loads(FLIGHTS_JSON.read_text(encoding="utf-8"))
         return data if isinstance(data, list) else []
+    except FileNotFoundError:
+        return []
     except Exception:
         return []
 

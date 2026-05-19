@@ -135,11 +135,15 @@ class Memory:
     def chat_history(self, count: int = 100, offset: int = 0, search: str = "") -> str:
         """Read from logs/chat.jsonl. count messages, offset from end, filter by search."""
         chat_path = self.logs_path("chat.jsonl")
-        if not chat_path.exists():
+        try:
+            raw_content = chat_path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            return "(chat history is empty)"
+        except OSError:
             return "(chat history is empty)"
 
         try:
-            raw_lines = chat_path.read_text(encoding="utf-8").strip().split("\n")
+            raw_lines = raw_content.strip().split("\n")
             entries = []
             for line in raw_lines:
                 line = line.strip()
@@ -184,10 +188,14 @@ class Memory:
     def read_jsonl_tail(self, log_name: str, max_entries: int = 100, max_age_hours: float = 0) -> List[Dict[str, Any]]:
         """Read the last max_entries records from a JSONL file."""
         path = self.logs_path(log_name)
-        if not path.exists():
+        try:
+            raw_content = path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            return []
+        except OSError:
             return []
         try:
-            lines = path.read_text(encoding="utf-8").strip().split("\n")
+            lines = raw_content.strip().split("\n")
             tail = lines[-max_entries:] if max_entries < len(lines) else lines
             entries = []
             for line in tail:

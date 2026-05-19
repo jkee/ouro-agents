@@ -114,17 +114,15 @@ def _build_memory_sections(memory: Memory) -> List[str]:
 
     # Dialogue summary (key moments from chat history)
     summary_path = memory.drive_root / "memory" / "dialogue_summary.md"
-    if summary_path.exists():
-        summary_text = read_text(summary_path)
-        if summary_text.strip():
-            sections.append("## Dialogue Summary\n\n" + clip_text(summary_text, 20000))
+    summary_text = _safe_read(summary_path)
+    if summary_text.strip():
+        sections.append("## Dialogue Summary\n\n" + clip_text(summary_text, 20000))
 
     # Evolution log (recent self-improvement cycles)
     evolution_log_path = memory.drive_root / "memory" / "evolution_log.md"
-    if evolution_log_path.exists():
-        evo_text = read_text(evolution_log_path)
-        if evo_text.strip():
-            sections.append("## Evolution Log (recent)\n\n" + clip_text(evo_text, 10000))
+    evo_text = _safe_read(evolution_log_path)
+    if evo_text.strip():
+        sections.append("## Evolution Log (recent)\n\n" + clip_text(evo_text, 10000))
 
     return sections
 
@@ -255,8 +253,27 @@ def _build_health_invariants(env: Any) -> str:
         import time as _time
         identity_path = env.drive_path("memory/identity.md")
         user_ctx_path = env.drive_path("memory/USER_CONTEXT.md")
-        identity_exists = identity_path.exists()
-        user_ctx_exists = user_ctx_path.exists()
+
+        def _file_exists_reliable(p: pathlib.Path, max_attempts: int = 3) -> bool:
+            """Check file existence via read, not .exists() — avoids transient mount false negatives."""
+            for attempt in range(max_attempts):
+                try:
+                    p.read_text(encoding="utf-8")
+                    return True
+                except FileNotFoundError:
+                    if attempt < max_attempts - 1:
+                        _time.sleep(0.3)
+                    else:
+                        return False
+                except OSError:
+                    if attempt < max_attempts - 1:
+                        _time.sleep(0.3)
+                    else:
+                        return True  # unreadable but probably exists (permissions/lock)
+            return False
+
+        identity_exists = _file_exists_reliable(identity_path)
+        user_ctx_exists = _file_exists_reliable(user_ctx_path)
         if not identity_exists:
             checks.append("CRITICAL: MISSING FILE — identity.md not found on data volume (/data/memory/identity.md)")
         elif not user_ctx_exists:
@@ -416,10 +433,9 @@ def build_llm_messages(
             semi_stable_parts.append(section)
 
     kb_index_path = env.drive_path("memory/knowledge/_index.md")
-    if kb_index_path.exists():
-        kb_index = kb_index_path.read_text(encoding="utf-8")
-        if kb_index.strip():
-            semi_stable_parts.append("## Knowledge base\n\n" + clip_text(kb_index, 50000))
+    kb_index = _safe_read(kb_index_path)
+    if kb_index.strip():
+        semi_stable_parts.append("## Knowledge base\n\n" + clip_text(kb_index, 50000))
 
     # Skills catalog (Tier 1 — name + description only)
     skills_index = _build_skills_index(env.repo_path(".agents/skills"))
@@ -857,11 +873,20 @@ def _compact_tool_call_arguments(tool_name: str, args_json: str) -> Dict[str, An
 
 
 def _safe_read(path: pathlib.Path, fallback: str = "") -> str:
-    """Read a file, returning fallback if it doesn't exist or errors."""
-    try:
-        if path.exists():
+    """Read a file, returning fallback if it doesn't exist or errors.
+
+    Uses try/except instead of .exists() to avoid transient mount false negatives.
+    """
+    for attempt in range(3):
+        try:
             return read_text(path)
-    except Exception:
-        log.debug(f"Failed to read file {path} in _safe_read", exc_info=True)
-        pass
+        except FileNotFoundError:
+            return fallback  # genuinely absent — no retry needed
+        except OSError as exc:
+            if attempt < 2:
+                import time as _time_local
+                _time_local.sleep(0.2)
+            else:
+                log.debug(f"Failed to read file {path} in _safe_read after 3 attempts: {exc}")
+                return fallback
     return fallback
