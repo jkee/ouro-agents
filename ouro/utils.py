@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import pathlib
+import random
 import subprocess
 import time
 from typing import Any, Dict, List, Optional
@@ -194,6 +195,61 @@ def run_cmd(cmd: List[str], cwd: Optional[pathlib.Path] = None) -> str:
             f"Command failed: {' '.join(cmd)}\n\nSTDOUT:\n{res.stdout}\n\nSTDERR:\n{res.stderr}"
         )
     return res.stdout.strip()
+
+
+# ---------------------------------------------------------------------------
+# Retry helper
+# ---------------------------------------------------------------------------
+
+def retry_with_backoff(
+    fn,
+    *args,
+    max_attempts: int = 3,
+    base_delay: float = 1.0,
+    max_delay: float = 30.0,
+    jitter: bool = True,
+    retryable_exceptions: tuple = (Exception,),
+    non_retryable_exceptions: tuple = (),
+    logger=None,
+    label: str = "",
+    **kwargs,
+):
+    """
+    Call fn(*args, **kwargs) with exponential backoff retry.
+
+    Args:
+        max_attempts: Total attempts (1 = no retry)
+        base_delay: Initial wait in seconds
+        max_delay: Cap on wait time
+        jitter: Add ±20% random jitter to avoid thundering herd
+        retryable_exceptions: Retry on these (default: all Exception)
+        non_retryable_exceptions: Never retry these (take priority)
+        logger: Logger to use (default: module-level log)
+        label: Human-readable name for log messages
+    """
+    _log = logger or log
+    last_exc: Exception | None = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return fn(*args, **kwargs)
+        except non_retryable_exceptions as exc:
+            raise  # never retry these
+        except retryable_exceptions as exc:
+            last_exc = exc
+            if attempt == max_attempts:
+                break
+            delay = min(base_delay * (2 ** (attempt - 1)), max_delay)
+            if jitter:
+                delay *= (0.8 + random.random() * 0.4)  # ±20%
+            _log.warning(
+                "retry_with_backoff: attempt %d/%d failed%s: %s — retrying in %.1fs",
+                attempt, max_attempts,
+                f" [{label}]" if label else "",
+                type(exc).__name__,
+                delay,
+            )
+            time.sleep(delay)
+    raise last_exc  # type: ignore[misc]
 
 
 # ---------------------------------------------------------------------------

@@ -122,11 +122,31 @@ def _fetch_emails_via_composio() -> list[dict]:
             log.warning("gmail_flight_scanner: COMPOSIO_API_KEY not set")
             return []
         toolset = ComposioToolSet(api_key=api_key)
-        result = toolset.execute_action(
-            action=Action("GMAIL_FETCH_EMAILS"),
-            params={"query": GMAIL_QUERY, "max_results": 20},
-            entity_id="default",
-        )
+        import random as _rand
+        import time as _time
+
+        result = None
+        last_exc = None
+        for attempt in range(1, 4):
+            try:
+                result = toolset.execute_action(
+                    action=Action("GMAIL_FETCH_EMAILS"),
+                    params={"query": GMAIL_QUERY, "max_results": 20},
+                    entity_id="default",
+                )
+                break
+            except Exception as exc:
+                last_exc = exc
+                exc_str = str(exc).lower()
+                # Don't retry auth errors
+                if any(k in exc_str for k in ("auth", "unauthorized", "403", "invalid api")):
+                    raise
+                if attempt < 3:
+                    delay = (2 ** attempt) * (0.8 + _rand.random() * 0.4)
+                    log.warning("gmail_flight_scanner: composio attempt %d/3 failed: %s — retrying in %.1fs", attempt, exc, delay)
+                    _time.sleep(delay)
+                else:
+                    raise last_exc
         if isinstance(result, dict):
             # Composio wraps results — try common keys
             for key in ("messages", "emails", "data", "response_data", "result"):
@@ -333,19 +353,30 @@ def _parse_email(email: dict) -> dict:
 
 def _send_telegram(text: str) -> None:
     """Direct Telegram send (bypasses agent — for cron use)."""
-    try:
-        import httpx
-        bot_token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-        chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
-        if not bot_token or not chat_id:
-            return
-        httpx.post(
-            f"https://api.telegram.org/bot{bot_token}/sendMessage",
-            json={"chat_id": int(chat_id), "text": text, "parse_mode": "Markdown"},
-            timeout=10,
-        )
-    except Exception as exc:
-        log.warning("gmail_flight_scanner: telegram send failed: %s", exc)
+    import random as _rand
+    import time as _time
+
+    bot_token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
+    if not bot_token or not chat_id:
+        return
+
+    for attempt in range(1, 4):
+        try:
+            import httpx
+            httpx.post(
+                f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                json={"chat_id": int(chat_id), "text": text, "parse_mode": "Markdown"},
+                timeout=10,
+            )
+            return  # success
+        except Exception as exc:
+            if attempt < 3:
+                delay = (2 ** attempt) * (0.8 + _rand.random() * 0.4)
+                log.warning("gmail_flight_scanner: telegram send attempt %d/3 failed: %s — retrying in %.1fs", attempt, exc, delay)
+                _time.sleep(delay)
+            else:
+                log.warning("gmail_flight_scanner: telegram send failed after 3 attempts: %s", exc)
 
 
 def _format_notification(record: dict) -> str:

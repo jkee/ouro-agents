@@ -9,9 +9,15 @@ from __future__ import annotations
 
 import logging
 import os
+import random
 import threading
 import time
 from typing import Any, Dict, List, Optional, Tuple
+
+try:
+    from openai import AuthenticationError as _OAIAuthError, RateLimitError as _OAIRateLimitError
+except ImportError:
+    _OAIAuthError = _OAIRateLimitError = None
 
 log = logging.getLogger(__name__)
 
@@ -237,6 +243,59 @@ class LLMClient:
             pass
         return None
 
+    def _chat_with_retry(self, client, kwargs: Dict[str, Any], max_retries: int = 3) -> Any:
+        """Call chat.completions.create with exponential backoff retry on transient errors."""
+        non_retryable = ()
+        if _OAIAuthError:
+            non_retryable = (_OAIAuthError,)
+
+        last_exc = None
+        for attempt in range(1, max_retries + 1):
+            try:
+                return client.chat.completions.create(**kwargs)
+            except Exception as exc:
+                # Never retry auth errors
+                if non_retryable and isinstance(exc, non_retryable):
+                    raise
+
+                exc_str = str(exc).lower()
+                is_rate_limit = (
+                    (_OAIRateLimitError and isinstance(exc, _OAIRateLimitError))
+                    or "429" in exc_str
+                    or "rate limit" in exc_str
+                    or "too many requests" in exc_str
+                )
+                is_server_error = (
+                    "500" in exc_str
+                    or "502" in exc_str
+                    or "503" in exc_str
+                    or "504" in exc_str
+                    or "server error" in exc_str
+                    or "overloaded" in exc_str
+                    or "timeout" in exc_str
+                    or "connection" in exc_str
+                )
+
+                if not (is_rate_limit or is_server_error):
+                    raise  # non-retryable error
+
+                last_exc = exc
+                if attempt == max_retries:
+                    break
+
+                # Exponential backoff: 2s, 4s, 8s + jitter
+                base_delay = 4.0 if is_rate_limit else 2.0
+                delay = min(base_delay * (2 ** (attempt - 1)), 60.0)
+                delay *= (0.8 + random.random() * 0.4)  # ±20% jitter
+
+                log.warning(
+                    "LLM call attempt %d/%d failed (%s: %s) — retrying in %.1fs",
+                    attempt, max_retries, type(exc).__name__, str(exc)[:100], delay,
+                )
+                time.sleep(delay)
+
+        raise last_exc
+
     def chat(
         self,
         messages: List[Dict[str, Any]],
@@ -279,7 +338,7 @@ class LLMClient:
             kwargs["tools"] = tools_with_cache
             kwargs["tool_choice"] = tool_choice
 
-        resp = client.chat.completions.create(**kwargs)
+        resp = self._chat_with_retry(client, kwargs)
         resp_dict = resp.model_dump()
         usage = resp_dict.get("usage") or {}
         choices = resp_dict.get("choices") or [{}]

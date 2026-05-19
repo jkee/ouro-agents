@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import time
 from datetime import datetime, timezone
 from typing import Any
 
@@ -30,8 +31,30 @@ def _fetch_matches() -> list[dict[str, str]]:
     """Fetch and parse all matches from the calendar page."""
     from bs4 import BeautifulSoup  # lazy import — optional dep
 
-    resp = requests.get(URL, headers=HEADERS, timeout=15)
-    resp.raise_for_status()
+    import random as _rand
+
+    last_exc = None
+    resp = None
+    for attempt in range(1, 4):
+        try:
+            resp = requests.get(URL, headers=HEADERS, timeout=15)
+            resp.raise_for_status()
+            break  # success
+        except requests.exceptions.Timeout as exc:
+            last_exc = exc
+        except requests.HTTPError as exc:
+            if exc.response is not None and exc.response.status_code < 500:
+                raise  # 4xx are not retryable
+            last_exc = exc
+        except requests.RequestException as exc:
+            last_exc = exc
+
+        if attempt < 3:
+            delay = (2 ** attempt) * (0.8 + _rand.random() * 0.4)
+            logger.warning("spartak_monitor: attempt %d/3 failed: %s — retrying in %.1fs", attempt, last_exc, delay)
+            time.sleep(delay)
+        else:
+            raise last_exc
 
     soup = BeautifulSoup(resp.text, "html.parser")
     lines = [l.strip() for l in soup.get_text().splitlines() if l.strip()]
