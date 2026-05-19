@@ -149,20 +149,25 @@ def _fetch_emails_via_composio() -> list[dict]:
                 else:
                     raise last_exc
         if isinstance(result, dict):
-            # Composio wraps results — try common keys
-            for key in ("messages", "emails", "data", "response_data", "result"):
+            # Check result["data"] first — Composio wraps payload there
+            data_val = result.get("data")
+            if isinstance(data_val, list):
+                return data_val
+            if isinstance(data_val, dict):
+                for key in ("messages", "emails", "data"):
+                    val = data_val.get(key)
+                    if isinstance(val, list):
+                        return val
+            # Fall back to other top-level keys
+            for key in ("messages", "emails", "result"):
                 val = result.get(key)
                 if isinstance(val, list):
                     return val
-            # Maybe the result itself contains an inner dict
-            if "response_data" in result:
-                inner = result["response_data"]
-                if isinstance(inner, dict):
-                    for key in ("messages", "emails", "data"):
-                        val = inner.get(key)
-                        if isinstance(val, list):
-                            return val
-        log.debug("gmail_flight_scanner: unexpected response shape: %s", str(result)[:200])
+        log.debug(
+            "gmail_flight_scanner: unexpected response shape — top-level keys: %s, data keys: %s",
+            list(result.keys()) if isinstance(result, dict) else type(result),
+            list(result["data"].keys()) if isinstance(result, dict) and isinstance(result.get("data"), dict) else None,
+        )
         return []
     except Exception as exc:
         log.warning("gmail_flight_scanner: fetch error: %s", exc)
