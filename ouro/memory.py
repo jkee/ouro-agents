@@ -62,46 +62,73 @@ class Memory:
                     time.sleep(delay)
         raise last_exc  # type: ignore[misc]
 
-    def load_scratchpad(self) -> str:
-        p = self.scratchpad_path()
-        if p.exists():
-            return self._read_with_retry(p)
-        default = self._default_scratchpad()
+    def _safe_load_or_create(self, p: pathlib.Path, default_fn, max_attempts: int = 3, delay: float = 0.5) -> str:
+        """
+        Robustly load a file without relying on p.exists().
+
+        Strategy:
+        - Attempt to read the file directly (catches OSError including ENOENT).
+        - On FileNotFoundError: retry up to max_attempts (handles transient mount issues).
+        - On other OSError: retry as well (transient I/O problem).
+        - Only creates a default if ALL attempts fail with a file-not-found-like error.
+        - Never calls write_text after a bare p.exists() check — that is the bug this fixes.
+        """
+        last_exc: Exception | None = None
+        for attempt in range(1, max_attempts + 1):
+            try:
+                return read_text(p)
+            except FileNotFoundError as exc:
+                last_exc = exc
+                if attempt < max_attempts:
+                    log.debug("File not found attempt %d/%d: %s — will retry", attempt, max_attempts, p)
+                    time.sleep(delay)
+            except OSError as exc:
+                last_exc = exc
+                log.warning("OSError attempt %d/%d reading %s: %s", attempt, max_attempts, p, exc)
+                if attempt < max_attempts:
+                    time.sleep(delay)
+        # File genuinely absent after all retries — safe to create default
+        log.info("Creating default for missing file: %s", p)
+        default = default_fn()
         write_text(p, default)
         return default
+
+    def load_scratchpad(self) -> str:
+        return self._safe_load_or_create(self.scratchpad_path(), self._default_scratchpad)
 
     def save_scratchpad(self, content: str) -> None:
         write_text(self.scratchpad_path(), content)
 
     def load_identity(self) -> str:
-        p = self.identity_path()
-        if p.exists():
-            return self._read_with_retry(p)
-        default = self._default_identity()
-        write_text(p, default)
-        return default
+        return self._safe_load_or_create(self.identity_path(), self._default_identity)
 
     def load_user_context(self) -> str:
-        p = self.user_context_path()
-        if p.exists():
-            return self._read_with_retry(p)
-        default = self._default_user_context()
-        write_text(p, default)
-        return default
+        return self._safe_load_or_create(self.user_context_path(), self._default_user_context)
 
     def save_user_context(self, content: str) -> None:
         write_text(self.user_context_path(), content)
 
     def ensure_files(self) -> None:
-        """Create memory files if they don't exist."""
-        if not self.scratchpad_path().exists():
-            write_text(self.scratchpad_path(), self._default_scratchpad())
-        if not self.identity_path().exists():
-            write_text(self.identity_path(), self._default_identity())
-        if not self.user_context_path().exists():
-            write_text(self.user_context_path(), self._default_user_context())
-        if not self.journal_path().exists():
-            write_text(self.journal_path(), "")
+        """Create memory files if they don't exist (idempotent, safe against transient mount issues)."""
+        self.load_scratchpad()
+        self.load_identity()
+        self.load_user_context()
+        # Journal is append-only — create only if truly missing
+        journal = self.journal_path()
+        for attempt in range(3):
+            try:
+                read_text(journal)
+                break
+            except FileNotFoundError:
+                if attempt == 2:
+                    write_text(journal, "")
+                else:
+                    time.sleep(0.5)
+            except OSError:
+                if attempt == 2:
+                    write_text(journal, "")
+                else:
+                    time.sleep(0.5)
 
     # --- Chat history ---
 
