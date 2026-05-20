@@ -17,6 +17,7 @@ from typing import Any, Optional
 from ouro.tools.registry import ToolContext, ToolEntry
 from ouro.tools.email_parser import _parse_email_dates
 from ouro.tools.control import _send_owner_message
+from ouro.utils import read_text, write_text
 
 log = logging.getLogger(__name__)
 
@@ -37,7 +38,7 @@ GMAIL_QUERY = (
 
 def _load_flights() -> list[dict]:
     try:
-        data = json.loads(FLIGHTS_JSON.read_text(encoding="utf-8"))
+        data = json.loads(read_text(FLIGHTS_JSON))
         return data if isinstance(data, list) else []
     except FileNotFoundError:
         return []
@@ -46,10 +47,7 @@ def _load_flights() -> list[dict]:
 
 
 def _save_flights(records: list[dict]) -> None:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = FLIGHTS_JSON.with_suffix(".tmp")
-    tmp.write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8")
-    tmp.replace(FLIGHTS_JSON)
+    write_text(FLIGHTS_JSON, json.dumps(records, ensure_ascii=False, indent=2))
 
 
 def _save_markdown(records: list[dict]) -> None:
@@ -75,8 +73,7 @@ def _save_markdown(records: list[dict]) -> None:
         _section("Trains", trains)
         _section("Other", others)
 
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    FLIGHTS_MD.write_text("\n".join(lines), encoding="utf-8")
+    write_text(FLIGHTS_MD, "\n".join(lines))
 
 
 def _format_record(r: dict) -> str:

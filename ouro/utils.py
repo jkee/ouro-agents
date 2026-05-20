@@ -42,12 +42,18 @@ def sha256_text(s: str) -> str:
 # ---------------------------------------------------------------------------
 
 def read_text(path: pathlib.Path) -> str:
-    """Read text from path, with one retry on transient OSError."""
-    try:
-        return path.read_text(encoding="utf-8")
-    except OSError:
-        time.sleep(0.05)
-        return path.read_text(encoding="utf-8")
+    """Read text from path, with up to 3 retries on transient OSError (exponential backoff)."""
+    delay = 0.05
+    last_exc: Exception | None = None
+    for attempt in range(4):
+        try:
+            return path.read_text(encoding="utf-8")
+        except OSError as e:
+            last_exc = e
+            if attempt < 3:
+                time.sleep(delay)
+                delay *= 3
+    raise last_exc  # type: ignore[misc]
 
 
 def write_text(path: pathlib.Path, content: str) -> None:
