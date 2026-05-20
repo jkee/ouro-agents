@@ -27,8 +27,7 @@ FLIGHTS_MD = DATA_DIR / "flights.md"
 
 GMAIL_QUERY = (
     "(flight OR билет OR booking OR eticket OR itinerary OR посадочный OR boarding "
-    "OR hotel OR гостиница OR reservation OR check-in OR confirmed OR trip.com "
-    "OR tripcom OR 'booking confirmed') newer_than:7d"
+    "OR hotel OR гостиница OR reservation OR check-in) newer_than:3h"
 )
 
 
@@ -290,23 +289,13 @@ def _parse_email(email: dict) -> dict:
     message_id = email.get("messageId") or email.get("id") or email.get("message_id") or ""
 
     # Date extraction — ONLY from parse_email_dates, body only (no subject)
+    # Dates not returned by parse_email_dates are recorded as null — no inference.
     date_result = _parse_email_dates(body)
     departure = date_result.get("departure")
     arrival = date_result.get("arrival")
     checkin = date_result.get("checkin")
     checkout = date_result.get("checkout")
     parse_warnings: list[str] = date_result.get("warnings") or []
-
-    # Fallback: if no labeled departure date found, infer from raw_dates (first future date)
-    # This handles senders like Trip.com that don't use "Departure:" labels
-    if not departure or not checkin:
-        today = datetime.now(timezone.utc).date().isoformat()
-        raw_dates = [d for d in (date_result.get("raw_dates") or []) if d >= today]
-        if not departure and raw_dates:
-            departure = raw_dates[0]
-            parse_warnings.append("departure date inferred from raw_dates (no label found)")
-        if not checkin and raw_dates:
-            checkin = raw_dates[0]
 
     booking_type = _classify_type(email, body)
     passengers = _extract_passengers(body)
