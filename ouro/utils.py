@@ -157,10 +157,19 @@ def append_jsonl(path: pathlib.Path, obj: Dict[str, Any]) -> None:
 # ---------------------------------------------------------------------------
 
 def safe_relpath(p: str) -> str:
-    p = p.replace("\\", "/").lstrip("/")
-    if ".." in pathlib.PurePosixPath(p).parts:
+    import os
+    p = p.replace("\\", "/")
+    # Strip /data/ prefix if present (drive_root is /data, passing absolute paths is a common mistake)
+    drive_root = os.environ.get("DRIVE_ROOT", "/data").rstrip("/")
+    dr_prefix = drive_root + "/"
+    if p.startswith(dr_prefix):
+        p = p[len(dr_prefix):]
+    elif p.rstrip("/") == drive_root:
+        p = "."
+    p = p.lstrip("/")
+    if p and ".." in pathlib.PurePosixPath(p).parts:
         raise ValueError("Path traversal is not allowed.")
-    return p
+    return p or "."
 
 
 # ---------------------------------------------------------------------------
