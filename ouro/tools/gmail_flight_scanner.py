@@ -1,8 +1,8 @@
 """
 Gmail flight scanner — hourly dedup scan for flight/hotel/train bookings.
 
-SILENT: no progress messages, no output unless a new booking was found and appended.
-Designed to run as a cron task.
+SILENT: no progress messages, no reasoning output, no notifications unless
+a new booking was actually found and appended. Designed to run as a cron task.
 """
 
 from __future__ import annotations
@@ -360,34 +360,6 @@ def _parse_email(email: dict) -> dict:
 # Notification helper
 # ---------------------------------------------------------------------------
 
-def _send_telegram(text: str) -> None:
-    """Direct Telegram send (bypasses agent — for cron use)."""
-    import random as _rand
-    import time as _time
-
-    bot_token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-    chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
-    if not bot_token or not chat_id:
-        return
-
-    for attempt in range(1, 4):
-        try:
-            import httpx
-            httpx.post(
-                f"https://api.telegram.org/bot{bot_token}/sendMessage",
-                json={"chat_id": int(chat_id), "text": text, "parse_mode": "Markdown"},
-                timeout=10,
-            )
-            return  # success
-        except Exception as exc:
-            if attempt < 3:
-                delay = (2 ** attempt) * (0.8 + _rand.random() * 0.4)
-                log.warning("gmail_flight_scanner: telegram send attempt %d/3 failed: %s — retrying in %.1fs", attempt, exc, delay)
-                _time.sleep(delay)
-            else:
-                log.warning("gmail_flight_scanner: telegram send failed after 3 attempts: %s", exc)
-
-
 def _format_notification(record: dict) -> str:
     t = record.get("type", "other")
     icons = {"flight": "✈️", "hotel": "🏨", "train": "🚆", "other": "📋"}
@@ -418,8 +390,8 @@ def _format_notification(record: dict) -> str:
 def scan_gmail_flights(ctx: Optional["ToolContext"] = None) -> str:
     """
     Hourly dedup scan of Gmail for flight/hotel/train bookings.
-    Silent unless new bookings are found.
-    Returns a summary string (empty if nothing new).
+    SILENT: no progress messages, no output. Only calls send_owner_message
+    if new bookings were found. Always returns empty string.
     """
     # STEP 1: Load existing records + build dedup set
     existing_records = _load_flights()
@@ -449,17 +421,13 @@ def scan_gmail_flights(ctx: Optional["ToolContext"] = None) -> str:
     _save_flights(all_records)
     _save_markdown(all_records)
 
-    # STEP 6: Notify only for new bookings
-    for record in new_records:
-        msg = _format_notification(record)
-        if ctx is not None:
-            _send_owner_message(ctx, msg, reason="new booking detected")
-        else:
-            _send_telegram(msg)
+    # STEP 6: Send ONE consolidated notification if new bookings found
+    if ctx is not None:
+        lines = [_format_notification(r) for r in new_records]
+        msg = "\n".join(lines)
+        _send_owner_message(ctx, msg, reason="new booking detected")
 
-    count = len(new_records)
-    types = ", ".join(sorted({r.get("type", "other") for r in new_records}))
-    return f"Found {count} new booking(s): {types}"
+    return ""
 
 
 # ---------------------------------------------------------------------------
@@ -481,12 +449,13 @@ def get_tools() -> list[ToolEntry]:
             schema={
                 "name": "scan_gmail_flights",
                 "description": (
-                    "Hourly Gmail dedup scan for flight, hotel, and train bookings. "
+                    "SILENT hourly Gmail dedup scan for flight, hotel, and train bookings. "
                     "Fetches emails matching travel keywords from the last 3 hours, "
-                    "skips already-seen messageIds, parses new ones, appends to "
-                    "/data/flights.json, regenerates /data/flights.md, and sends "
-                    "a Telegram notification only if new bookings were found. "
-                    "Silent if nothing new. Run via cron every hour."
+                    "skips already-seen messageIds, parses new ones using parse_email_dates "
+                    "for all date fields, appends to /data/flights.json, regenerates "
+                    "/data/flights.md, and calls send_owner_message only if new bookings "
+                    "were found. Produces NO output, NO progress messages, NO reasoning "
+                    "unless a new booking was appended. Run via cron every hour."
                 ),
                 "parameters": {
                     "type": "object",
